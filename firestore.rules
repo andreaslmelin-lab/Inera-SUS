@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: uid, email, displayName, role
+    //
+    // Collection: products
+    // Fields: id, name, description
+    //
+    // Collection: products/{productId}/variants
+    // Fields: id, productId, name
+    //
+    // Collection: measurements
+    // Fields: id, productId, date, uploadedBy, fileName, averageScore, responseCount
+    //
+    // Collection: responses
+    // Fields: id, measurementId, productId, variantName, susScore, answers, comment, submitDate
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          request.auth.token.email == "andreas.l.melin@gmail.com");
+    }
+
+    // Domain Validators
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string && data.email is string;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll(['id', 'name']) &&
+             data.id is string && data.name is string && data.name.size() < 200;
+    }
+
+    function isValidMeasurement(data) {
+      return data.keys().hasAll(['productId', 'date', 'uploadedBy', 'fileName', 'averageScore', 'responseCount']) &&
+             data.productId is string && data.date is timestamp && data.uploadedBy is string &&
+             data.fileName is string && data.averageScore is number && data.responseCount is number;
+    }
+
+    function isValidResponse(data) {
+      return data.keys().hasAll(['measurementId', 'productId', 'susScore', 'answers', 'comment', 'submitDate']) &&
+             data.measurementId is string && data.productId is string && data.susScore is number &&
+             data.answers is list && data.comment is string && data.submitDate is timestamp;
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data));
+    }
+
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidProduct(request.resource.data);
+      allow delete: if isAdmin();
+      
+      match /variants/{variantId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAuthenticated(); // Allow users to create variants during upload
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /measurements/{measurementId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMeasurement(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    match /responses/{responseId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidResponse(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}

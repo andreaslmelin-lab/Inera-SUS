@@ -1,0 +1,62 @@
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&family=Poppins:wght@400;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Poppins", sans-serif;
+
+  /* Inera Color Palette */
+  --color-inera-primary-20: #5A1A33;
+  --color-inera-primary-30: #7E2A4C;
+  --color-inera-primary-40: #A33662;
+  --color-inera-primary-50: #C03F73;
+  --color-inera-primary-60: #E481A9;
+  --color-inera-primary-70: #E3ABC1;
+
+  --color-inera-secondary-40: #E7DAC5;
+  --color-inera-secondary-90: #F6F1E9;
+  --color-inera-secondary-95: #F9F6F1;
+
+  --color-inera-accent-20: #254637;
+  --color-inera-accent-30: #305A47;
+  --color-inera-accent-40: #40775E;
+  --color-inera-accent-50: #4F9278;
+  --color-inera-accent-60: #6FAF97;
+  --color-inera-accent-70: #94D1B6;
+
+  --color-inera-neutral-10: #16181A;
+  --color-inera-neutral-20: #222529;
+  --color-inera-neutral-30: #383D42;
+  --color-inera-neutral-40: #4D545C;
+  --color-inera-neutral-60: #7B848F;
+  --color-inera-neutral-70: #A1A9B2;
+  --color-inera-neutral-90: #CFD7DD;
+  --color-inera-neutral-95: #EDF1F5;
+  --color-inera-neutral-99: #F7F9FC;
+  --color-inera-neutral-100: #FFFFFF;
+
+  --color-inera-success-40: #297A54;
+  --color-inera-success-50: #40966D;
+  --color-inera-success-95: #F6FEFB;
+
+  --color-inera-attention-40: #BD7100;
+  --color-inera-attention-50: #DB901B;
+  --color-inera-attention-95: #FFFBF2;
+
+  --color-inera-error-40: #BB2F1C;
+  --color-inera-error-50: #D74F3D;
+  --color-inera-error-95: #FFF8F7;
+
+  --color-inera-info-40: #1775D3;
+  --color-inera-info-50: #489AEB;
+  --color-inera-info-95: #F6FAFE;
+}
+
+@layer base {
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+  body {
+    @apply font-sans text-inera-neutral-10 bg-inera-secondary-95;
+  }
+}

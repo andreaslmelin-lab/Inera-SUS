@@ -1,0 +1,5 @@
+{
+  "name": "Inera SUS Tracker",
+  "description": "Ett verktyg för att visualisera och analysera användarupplevelse (SUS) för Ineras produkter över tid.",
+  "requestFramePermissions": []
+}

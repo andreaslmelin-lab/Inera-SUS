@@ -1,0 +1,91 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "App user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] }
+      },
+      "required": ["uid", "email"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A main product in Inera's catalog",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Variant": {
+      "title": "Variant",
+      "description": "A variant or function of a main product",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["id", "productId", "name"]
+    },
+    "Measurement": {
+      "title": "Measurement",
+      "description": "A batch of SUS responses uploaded at a specific time",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "uploadedBy": { "type": "string" },
+        "fileName": { "type": "string" },
+        "averageScore": { "type": "number" },
+        "responseCount": { "type": "number" }
+      },
+      "required": ["id", "productId", "date"]
+    },
+    "Response": {
+      "title": "Response",
+      "description": "An individual SUS response",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "measurementId": { "type": "string" },
+        "productId": { "type": "string" },
+        "variantName": { "type": "string" },
+        "susScore": { "type": "number" },
+        "answers": { "type": "array", "items": { "type": "number" } },
+        "comment": { "type": "string" },
+        "submitDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "measurementId", "productId", "susScore"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "User profiles"
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "Product" },
+      "description": "Main products"
+    },
+    "/products/{productId}/variants/{variantId}": {
+      "schema": { "$ref": "Variant" },
+      "description": "Product variants"
+    },
+    "/measurements/{measurementId}": {
+      "schema": { "$ref": "Measurement" },
+      "description": "Measurement batches"
+    },
+    "/responses/{responseId}": {
+      "schema": { "$ref": "Response" },
+      "description": "Individual responses"
+    }
+  }
+}
