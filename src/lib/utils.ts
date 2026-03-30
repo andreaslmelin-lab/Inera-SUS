@@ -37,3 +37,15 @@ export function getSusGrade(score: number): { label: string, text: string, color
   if (score >= 51) return { label: 'C (Godkänd)', text: 'Godkänd', color: 'text-inera-attention-50 bg-inera-attention-95 border border-inera-attention-40', hex: '#DB901B', bgClass: 'bg-inera-attention-50' };
   return { label: 'F (Underkänd)', text: 'Underkänd', color: 'text-inera-error-50 bg-inera-error-95 border border-inera-error-40', hex: '#D74F3D', bgClass: 'bg-inera-error-50' };
 }
+
+export function getMedianExplanation(avg: number, median: number): string | undefined {
+  const diff = Math.abs(avg - median);
+  const threshold = avg * 0.05;
+  if (diff <= threshold) return undefined;
+
+  if (median < avg) {
+    return `Medianvärdet (${Math.round(median)}) är lägre än medelvärdet (${Math.round(avg)}), vilket tyder på att det finns ett antal höga värden som drar upp medelvärdet.`;
+  } else {
+    return `Medianvärdet (${Math.round(median)}) är högre än medelvärdet (${Math.round(avg)}), vilket tyder på att det finns ett antal låga värden som drar ner medelvärdet.`;
+  }
+}

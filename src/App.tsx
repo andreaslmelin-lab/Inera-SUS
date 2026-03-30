@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db } from './firebase';
 import { Product, ProductService, Measurement, MeasurementService, ResponseData, Variant } from './services';
-import { cn, getSusGrade, calculateMedian } from './lib/utils';
+import { cn, getSusGrade, calculateMedian, getMedianExplanation } from './lib/utils';
 import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -624,7 +624,7 @@ export default function App() {
                                     <div 
                                       className="absolute top-0 bottom-0 w-1.5 bg-white shadow-[0_0_4px_rgba(0,0,0,0.3)] z-10 rounded-full h-4 my-auto"
                                       style={{ left: `${p.latest.medianScore}%`, transform: 'translateX(-50%)' }}
-                                      title={`Median: ${Math.round(p.latest.medianScore)}`}
+                                      title={`Median: ${Math.round(p.latest.medianScore)}${getMedianExplanation(p.latest.averageScore, p.latest.medianScore) ? '\n\n' + getMedianExplanation(p.latest.averageScore, p.latest.medianScore) : ''}`}
                                     />
                                   )}
                                   <div className="absolute inset-0 flex items-center justify-between px-3 pointer-events-none">
@@ -632,7 +632,10 @@ export default function App() {
                                       {Math.round(p.latest.averageScore)} SUS (Medel)
                                     </span>
                                     {p.latest.medianScore !== undefined && (
-                                      <span className="text-xs font-bold text-white drop-shadow-md opacity-90">
+                                      <span 
+                                        className="text-xs font-bold text-white drop-shadow-md opacity-90 pointer-events-auto cursor-help"
+                                        title={getMedianExplanation(p.latest.averageScore, p.latest.medianScore)}
+                                      >
                                         {Math.round(p.latest.medianScore)} (Median)
                                       </span>
                                     )}
@@ -679,7 +682,7 @@ export default function App() {
                                       <div 
                                         className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_2px_rgba(0,0,0,0.3)] z-10 rounded-full h-3 my-auto"
                                         style={{ left: `${vData.median}%`, transform: 'translateX(-50%)' }}
-                                        title={`Median: ${Math.round(vData.median)}`}
+                                        title={`Median: ${Math.round(vData.median)}${getMedianExplanation(vData.score, vData.median) ? '\n\n' + getMedianExplanation(vData.score, vData.median) : ''}`}
                                       />
                                     )}
                                     <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
@@ -687,7 +690,10 @@ export default function App() {
                                         {Math.round(vData.score)}
                                       </span>
                                       {vData.median !== undefined && (
-                                        <span className="text-[10px] font-bold text-white drop-shadow-md opacity-90">
+                                        <span 
+                                          className="text-[10px] font-bold text-white drop-shadow-md opacity-90 pointer-events-auto cursor-help"
+                                          title={getMedianExplanation(vData.score, vData.median)}
+                                        >
                                           Med: {Math.round(vData.median)}
                                         </span>
                                       )}
@@ -804,7 +810,10 @@ export default function App() {
                                     <span className="text-[10px] font-bold opacity-75">{vData.count} svar</span>
                                   </div>
                                   {vData.median !== undefined && (
-                                    <div className="text-[10px] font-bold opacity-90 flex items-center gap-1">
+                                    <div 
+                                      className="text-[10px] font-bold opacity-90 flex items-center gap-1 cursor-help"
+                                      title={getMedianExplanation(vData.score, vData.median)}
+                                    >
                                       <div className="w-1.5 h-1.5 rounded-full bg-current" />
                                       Median: {Math.round(vData.median)}
                                     </div>
@@ -819,6 +828,7 @@ export default function App() {
                                   <div 
                                     className="absolute bottom-0 h-4 w-2.5 bg-white border-2 border-current shadow-[0_0_6px_rgba(0,0,0,0.4)] z-20 rounded-t-full" 
                                     style={{ left: `${vData.median}%`, transform: 'translateX(-50%)' }} 
+                                    title={`Median: ${Math.round(vData.median)}${getMedianExplanation(vData.score, vData.median) ? '\n\n' + getMedianExplanation(vData.score, vData.median) : ''}`}
                                   />
                                 )}
                               </div>
