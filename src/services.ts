@@ -117,6 +117,7 @@ export const MeasurementService = {
       Papa.parse(file, {
         header: false,
         skipEmptyLines: true,
+        encoding: 'iso-8859-1', // ISO-8859-1 handles Swedish characters ÅÖÄ well
         complete: async (results) => {
           try {
             const rows = results.data as string[][];
@@ -133,19 +134,26 @@ export const MeasurementService = {
             const header = rawHeader.map(h => h.trim().toLowerCase());
             
             // Find columns by name or fallback to indices
-            const variantIdx = header.findIndex(h => 
-              h === 'variant' || 
-              h === 'kategori' || 
-              h.includes('variant') || 
-              h.includes('kategori') ||
-              h.includes('typ')
-            ) !== -1 ? header.findIndex(h => 
-              h === 'variant' || 
-              h === 'kategori' || 
-              h.includes('variant') || 
-              h.includes('kategori') ||
-              h.includes('typ')
-            ) : 2;
+            const possibleVariantHeaders = [
+              'vilken funktion på 1177',
+              'funktion',
+              'variant',
+              'kategori',
+              'typ'
+            ];
+            
+            let variantIdx = -1;
+            for (const expected of possibleVariantHeaders) {
+              const idx = header.findIndex(h => h.includes(expected));
+              if (idx !== -1) {
+                variantIdx = idx;
+                break;
+              }
+            }
+            // Fallback to 2 if no header matched
+            if (variantIdx === -1) {
+              variantIdx = 2;
+            }
             
             // Prioritize exact matches for score
             let scoreIdx = header.findIndex(h => h === 'score' || h === 'poäng' || h === 'summa' || h === 'total');

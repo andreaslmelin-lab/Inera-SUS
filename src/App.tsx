@@ -22,19 +22,19 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
   <button
     onClick={onClick}
     className={cn(
-      "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200",
+      "w-full flex items-center gap-3 px-4 py-2.5 rounded text-sm font-semibold transition-colors duration-150 border",
       active 
-        ? "bg-inera-primary-40 text-white shadow-md" 
-        : "text-inera-neutral-30 hover:bg-inera-secondary-90"
+        ? "bg-white text-inera-primary-40 border-inera-secondary-90 shadow-sm" 
+        : "text-inera-primary-30 border-transparent hover:bg-inera-secondary-90"
     )}
   >
-    <Icon size={20} />
-    <span className="font-medium">{label}</span>
+    <Icon size={18} />
+    <span>{label}</span>
   </button>
 );
 
 const StatCard = ({ icon: Icon, label, value, subValue, color, trend }: any) => (
-  <div className="bg-white p-6 rounded-xl border border-inera-secondary-90 shadow-sm flex items-start gap-4">
+  <div className="card p-6 shadow-sm flex items-start gap-4 border-inera-secondary-90">
     <div className={cn("p-3 rounded-lg", color)}>
       <Icon size={24} className="text-white" />
     </div>
@@ -58,7 +58,7 @@ const StatCard = ({ icon: Icon, label, value, subValue, color, trend }: any) => 
 );
 
 const SusLegend = () => (
-  <div className="bg-white p-4 rounded-xl border border-inera-secondary-90 shadow-sm flex flex-wrap gap-6 items-center justify-between text-sm">
+  <div className="card shadow-sm flex flex-wrap gap-6 items-center justify-between text-sm border-inera-secondary-90 py-3">
     <div className="flex flex-wrap gap-6 items-center">
       <span className="font-bold text-inera-neutral-20">SUS Betygsskala:</span>
       <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-inera-success-50"></span>≥ 80.3 (Utmärkt)</div>
@@ -409,7 +409,7 @@ export default function App() {
   if (!user) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-inera-secondary-95 p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border border-inera-secondary-90">
+        <div className="card p-8 shadow-xl max-w-md w-full text-center border-inera-secondary-90">
           <div className="bg-inera-primary-40 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-inera-primary-70">
             <Database className="text-white" size={32} />
           </div>
@@ -417,7 +417,7 @@ export default function App() {
           <p className="text-inera-neutral-40 mb-8">Logga in för att hantera och visualisera SUS-mätningar för Ineras produkter.</p>
           <button
             onClick={handleLogin}
-            className="w-full flex items-center justify-center gap-3 bg-white border border-inera-neutral-70 px-6 py-3 rounded-xl font-semibold text-inera-neutral-20 hover:bg-inera-secondary-95 transition-all duration-200 shadow-sm"
+            className="w-full btn btn--l btn--secondary border-inera-neutral-70 shadow-sm"
           >
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
             Logga in med Google
@@ -428,143 +428,158 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-inera-secondary-95 overflow-hidden">
-      {/* Sidebar */}
-      <aside className="w-72 bg-white border-r border-inera-neutral-90 flex flex-col shadow-sm z-10">
-        <div className="p-6 border-b border-inera-secondary-90">
-          <div className="flex items-center gap-3 text-inera-primary-40">
-            <div className="bg-inera-primary-40 p-2 rounded-lg">
-              <Database className="text-white" size={20} />
-            </div>
-            <h1 className="text-xl font-bold text-inera-neutral-10 tracking-tight">Inera SUS</h1>
-          </div>
-        </div>
-
-        <nav className="flex-1 p-4 space-y-2">
-          <SidebarItem 
-            icon={LayoutDashboard} 
-            label="Dashboard" 
-            active={activeTab === 'dashboard'} 
-            onClick={() => { setActiveTab('dashboard'); setView('company'); }} 
-          />
-          <SidebarItem 
-            icon={Upload} 
-            label="Ladda upp data" 
-            active={activeTab === 'upload'} 
-            onClick={() => setActiveTab('upload')} 
-          />
-        </nav>
-
-        <div className="p-4 border-t border-inera-secondary-90">
-          <div className="flex items-center gap-3 px-4 py-3 mb-4">
-            <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=A33662&color=fff`} alt="" className="w-10 h-10 rounded-full border-2 border-inera-info-95" />
-            <div className="overflow-hidden">
-              <p className="text-sm font-bold text-inera-neutral-10 truncate">{user.displayName}</p>
-              <p className="text-xs text-inera-neutral-40 truncate">{user.email}</p>
-            </div>
-          </div>
-          {user.email === 'andreas.l.melin@gmail.com' && (
-            <button
-              onClick={() => setShowResetConfirm(true)}
-              className="w-full flex items-center gap-3 px-4 py-2 mb-2 text-inera-error-40 hover:bg-inera-error-95 rounded-lg transition-colors font-medium border border-inera-error-40"
-            >
-              <Trash2 size={18} />
-              Nollställ Katalog
-            </button>
-          )}
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-2 text-inera-error-40 hover:bg-inera-error-95 rounded-lg transition-colors font-medium"
-          >
-            <LogOut size={18} />
-            Logga ut
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">
-        <header className="bg-white border-b border-inera-neutral-90 px-8 py-4 sticky top-0 z-10 flex items-center justify-between">
+    <div className="min-h-screen bg-white pb-12">
+      {/* Header */}
+      <header className="bg-inera-primary-30 text-white px-6 py-8 border-b-4 border-inera-secondary-95">
+        <div className="max-w-[80rem] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h2 className="text-lg font-semibold text-inera-neutral-10">
-              {activeTab === 'dashboard' ? 'SUS Dashboard' : 'Hantera Mätningar'}
-            </h2>
+            <div className="bg-white/20 p-3 rounded-lg backdrop-blur-sm">
+              <Database className="text-white" size={24} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold font-display leading-tight text-white">Inera SUS</h1>
+              <p className="text-white text-sm mt-1">Hantera och visualisera System Usability Scale-mätningar</p>
+            </div>
           </div>
+          <div className="flex items-center gap-4">
+             <div className="text-right hidden sm:block">
+               <p className="text-sm font-bold text-white">{user.displayName}</p>
+               <p className="text-xs text-white">{user.email}</p>
+             </div>
+             <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=A33662&color=fff`} alt="" className="w-10 h-10 rounded-full border-2 border-inera-secondary-40" />
+          </div>
+        </div>
+      </header>
+
+      {/* Main Layout Grid */}
+      <div className="max-w-[80rem] mx-auto mt-8 px-6 grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-8 items-start">
+        
+        {/* Sidebar Nav */}
+        <aside className="bg-inera-secondary-95 border border-inera-neutral-90 rounded-lg p-4 sticky top-8 space-y-6">
+          <nav className="space-y-1">
+            <h2 className="text-xs uppercase tracking-widest text-inera-neutral-40 font-bold mb-3 pl-2">Sektioner</h2>
+            <SidebarItem 
+              icon={LayoutDashboard} 
+              label="Dashboard" 
+              active={activeTab === 'dashboard'} 
+              onClick={() => { setActiveTab('dashboard'); setView('company'); }} 
+            />
+            <SidebarItem 
+              icon={Upload} 
+              label="Ladda upp data" 
+              active={activeTab === 'upload'} 
+              onClick={() => setActiveTab('upload')} 
+            />
+          </nav>
+
+          <div className="pt-4 border-t border-inera-secondary-90 space-y-2">
+            {user.email === 'andreas.l.melin@gmail.com' && (
+              <button
+                onClick={() => setShowResetConfirm(true)}
+                className="w-full btn btn--s justify-start btn--destructive"
+              >
+                <Trash2 size={16} />
+                Nollställ Katalog
+              </button>
+            )}
+            <button
+              onClick={handleLogout}
+              className="w-full btn btn--s justify-start btn--tertiary text-inera-neutral-40 hover:text-inera-error-40 hover:bg-inera-error-95"
+            >
+              <LogOut size={16} />
+              Logga ut
+            </button>
+          </div>
+        </aside>
+
+        {/* Main Content Area */}
+        <main className="min-w-0">
           {activeTab === 'dashboard' && (
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-inera-neutral-40">Mätning:</span>
-                <select 
-                  value={selectedMeasurementId}
-                  onChange={(e) => {
-                    const mId = e.target.value;
-                    setSelectedMeasurementId(mId);
-                    if (mId !== 'latest' && mId !== 'all') {
-                      const m = allMeasurements.find(am => am.id === mId);
-                      if (m) {
-                        setSelectedProductId(m.productId);
-                        setView('product');
-                      }
-                    }
-                  }}
-                  className="bg-inera-secondary-95 border border-inera-secondary-90 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-inera-primary-50 outline-none min-w-[200px]"
-                >
-                  <option value="all">Alla mätningar (Aggregerat)</option>
-                  <option value="latest">Senaste mätning per produkt</option>
-                  {allMeasurements.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {format(m.date, 'yyyy-MM-dd HH:mm')} - {products.find(p => p.id === m.productId)?.name || m.productId}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-inera-neutral-40">Produkt:</span>
-                <select 
-                  value={view === 'company' ? 'Alla' : selectedProductId || 'Alla'}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === 'Alla') {
-                      setView('company');
-                      setSelectedProductId(null);
-                      setSelectedVariant('Alla');
-                    } else {
-                      setView('product');
-                      setSelectedProductId(val);
-                      setSelectedVariant('Alla');
-                    }
-                  }}
-                  className="bg-inera-secondary-95 border border-inera-secondary-90 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-inera-primary-50 outline-none min-w-[150px]"
-                >
-                  <option value="Alla">Alla produkter</option>
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {view === 'product' && (
+            <div className="bg-inera-secondary-95 border border-inera-neutral-90 rounded-lg p-4 mb-8 flex flex-wrap items-center justify-between gap-4">
+              <h2 className="text-xl font-bold font-display text-inera-neutral-10">
+                Dashboard
+              </h2>
+              <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-inera-neutral-40">Variant:</span>
+                  <label className="label mb-0 whitespace-nowrap !text-sm">Mätning:</label>
                   <select 
-                    value={selectedVariant}
-                    onChange={(e) => setSelectedVariant(e.target.value)}
-                    className="bg-inera-secondary-95 border border-inera-secondary-90 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-inera-primary-50 outline-none min-w-[150px]"
+                    value={selectedMeasurementId}
+                    onChange={(e) => {
+                      const mId = e.target.value;
+                      setSelectedMeasurementId(mId);
+                      if (mId !== 'latest' && mId !== 'all') {
+                        const m = allMeasurements.find(am => am.id === mId);
+                        if (m) {
+                          setSelectedProductId(m.productId);
+                          setView('product');
+                        }
+                      }
+                    }}
+                    className="select !h-8 !py-1 !text-sm w-auto min-w-[180px]"
                   >
-                    <option value="Alla">Hela produkten</option>
-                    {variants.map(v => (
-                      <option key={v.id} value={v.name}>{v.name}</option>
+                    <option value="all">Alla mätningar (Aggregerat)</option>
+                    <option value="latest">Senaste mätning per produkt</option>
+                    {allMeasurements.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {format(m.date, 'yyyy-MM-dd HH:mm')} - {products.find(p => p.id === m.productId)?.name || m.productId}
+                      </option>
                     ))}
                   </select>
                 </div>
-              )}
+
+                <div className="flex items-center gap-2">
+                  <label className="label mb-0 whitespace-nowrap !text-sm">Produkt:</label>
+                  <select 
+                    value={view === 'company' ? 'Alla' : selectedProductId || 'Alla'}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'Alla') {
+                        setView('company');
+                        setSelectedProductId(null);
+                        setSelectedVariant('Alla');
+                        setSelectedMeasurementId('all');
+                      } else {
+                        setView('product');
+                        setSelectedProductId(val);
+                        setSelectedVariant('Alla');
+                        if (selectedMeasurementId !== 'latest' && selectedMeasurementId !== 'all') {
+                          const sm = allMeasurements.find(m => m.id === selectedMeasurementId);
+                          if (sm && sm.productId !== val) {
+                            setSelectedMeasurementId('latest');
+                          }
+                        }
+                      }
+                    }}
+                    className="select !h-8 !py-1 !text-sm w-auto min-w-[150px]"
+                  >
+                    <option value="Alla">Alla produkter</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {view === 'product' && (
+                  <div className="flex items-center gap-2">
+                    <label className="label mb-0 whitespace-nowrap !text-sm">Variant:</label>
+                    <select 
+                      value={selectedVariant}
+                      onChange={(e) => setSelectedVariant(e.target.value)}
+                      className="select !h-8 !py-1 !text-sm w-auto min-w-[150px]"
+                    >
+                      <option value="Alla">Hela produkten</option>
+                      {variants.map(v => (
+                        <option key={v.id} value={v.name}>{v.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
             </div>
           )}
-        </header>
 
-        <div className="p-8 max-w-7xl mx-auto">
-          {activeTab === 'dashboard' ? (
+          <div>
+            {activeTab === 'dashboard' ? (
             <div className="space-y-8">
               {view === 'company' ? (
                 <div className="space-y-8">
@@ -594,7 +609,7 @@ export default function App() {
 
                   <SusLegend />
 
-                  <div className="bg-white rounded-2xl border border-inera-secondary-90 shadow-sm overflow-hidden">
+                  <div className="card p-0 shadow-sm overflow-hidden border-inera-secondary-90">
                     <div className="p-6 border-b border-inera-secondary-90 flex items-center justify-between">
                       <h3 className="text-lg font-bold text-inera-neutral-10">Produktkatalog</h3>
                       <div className="text-xs text-inera-neutral-40 font-medium uppercase tracking-wider">
@@ -753,7 +768,7 @@ export default function App() {
 
                   <SusLegend />
                   {measurements[0]?.variantScores && Object.keys(measurements[0].variantScores).length > 0 && selectedVariant === 'Alla' && (
-                    <div className="bg-white p-6 rounded-2xl border border-inera-secondary-90 shadow-sm">
+                    <div className="card p-6 shadow-sm border-inera-secondary-90">
                       <div className="flex items-center justify-between mb-6">
                         <h3 className="text-lg font-bold text-inera-neutral-10 flex items-center gap-2">
                           <Filter size={20} className="text-inera-success-40" />
@@ -840,7 +855,7 @@ export default function App() {
 
                   {/* Charts Row 1 */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <div className="bg-white p-6 rounded-2xl border border-inera-secondary-90 shadow-sm">
+                    <div className="card p-6 shadow-sm border-inera-secondary-90">
                       <h3 className="text-lg font-bold text-inera-neutral-10 mb-6 flex items-center gap-2">
                         <TrendingUp size={20} className="text-inera-primary-40" />
                         SUS Utveckling över tid
@@ -867,7 +882,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="bg-white p-6 rounded-2xl border border-inera-secondary-90 shadow-sm">
+                    <div className="card p-6 shadow-sm border-inera-secondary-90">
                       <div className="flex items-center justify-between mb-6">
                         <h3 className="text-lg font-bold text-inera-neutral-10 flex items-center gap-2">
                           <Users size={20} className="text-inera-accent-40" />
@@ -918,13 +933,18 @@ export default function App() {
                                   if (active && payload && payload.length) {
                                     const data = payload[0].payload;
                                     return (
-                                      <div className="bg-white p-4 rounded-xl shadow-xl border border-inera-secondary-90 text-xs">
+                                      <div className="card p-4 shadow-xl border-inera-secondary-90 text-xs">
                                         <p className="font-bold mb-2 text-inera-neutral-10">{data.name}</p>
                                         <div className="space-y-1">
                                           <div className="flex justify-between gap-4"><span>Max:</span><span className="font-bold">{Math.round(data.max)}</span></div>
                                           <div className="flex justify-between gap-4"><span>Q3:</span><span className="font-bold">{Math.round(data.q3)}</span></div>
                                           <div className="flex justify-between gap-4 text-inera-primary-40"><span>Median:</span><span className="font-bold">{Math.round(data.median)}</span></div>
-                                          <div className="flex justify-between gap-4"><span>Q1:</span><span className="font-bold">{Math.round(data.q1)}</span></div>
+                                          {getMedianExplanation(averageSus, data.median) && (
+                                            <p className="mt-2 text-[10px] text-inera-primary-40 leading-relaxed italic bg-inera-primary-70/10 p-2 rounded">
+                                              {getMedianExplanation(averageSus, data.median)}
+                                            </p>
+                                          )}
+                                          <div className="flex justify-between gap-4 pt-1 border-t border-inera-secondary-90 mt-1"><span>Q1:</span><span className="font-bold">{Math.round(data.q1)}</span></div>
                                           <div className="flex justify-between gap-4"><span>Min:</span><span className="font-bold">{Math.round(data.min)}</span></div>
                                         </div>
                                       </div>
@@ -947,13 +967,13 @@ export default function App() {
                   </div>
 
                   {/* Comments Section */}
-                  <div className="bg-white rounded-2xl border border-inera-secondary-90 shadow-sm overflow-hidden">
+                  <div className="card p-0 shadow-sm overflow-hidden border-inera-secondary-90">
                     <div className="p-6 border-b border-inera-secondary-90 flex items-center justify-between">
                       <h3 className="text-lg font-bold text-inera-neutral-10 flex items-center gap-2">
                         <MessageSquare size={20} className="text-inera-primary-40" />
                         Användarkommentarer
                       </h3>
-                      <span className="bg-inera-secondary-95 text-inera-primary-40 px-3 py-1 rounded-full text-xs font-bold">
+                      <span className="badge badge--secondary">
                         {filteredResponses.filter(r => r.comment).length} kommentarer
                       </span>
                     </div>
@@ -1015,7 +1035,7 @@ export default function App() {
             </div>
           ) : (
             <div className="max-w-2xl mx-auto">
-              <div className="bg-white p-8 rounded-2xl border border-inera-secondary-90 shadow-sm">
+              <div className="card p-8 shadow-sm border-inera-secondary-90">
                 <div className="flex items-center gap-4 mb-8">
                   <div className="bg-inera-secondary-95 p-3 rounded-xl">
                     <Upload className="text-inera-primary-40" size={24} />
@@ -1028,12 +1048,12 @@ export default function App() {
 
                 <div className="space-y-6">
                   <div className="space-y-2">
-                    <label className="text-sm font-bold text-inera-neutral-20">Välj produkt</label>
+                    <label className="label">Välj produkt</label>
                     <div className="flex gap-2">
                       <select 
                         value={uploadProductId}
                         onChange={(e) => setUploadProductId(e.target.value)}
-                        className="flex-1 bg-inera-secondary-95 border border-inera-secondary-90 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-inera-primary-50 outline-none"
+                        className="select flex-1"
                       >
                         <option value="">-- Välj befintlig produkt --</option>
                         {products.map(p => (
@@ -1046,7 +1066,7 @@ export default function App() {
                         placeholder="Ny produkt..." 
                         value={uploadProductId}
                         onChange={(e) => setUploadProductId(e.target.value)}
-                        className="flex-1 bg-inera-secondary-95 border border-inera-secondary-90 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-inera-primary-50 outline-none"
+                        className="input flex-1"
                       />
                     </div>
                     <p className="text-[10px] text-inera-neutral-60 italic">Tips: Skriv namnet om produkten inte finns i listan.</p>
@@ -1080,25 +1100,28 @@ export default function App() {
 
                   {uploadStatus && (
                     <div className={cn(
-                      "p-4 rounded-xl flex items-start gap-3",
-                      uploadStatus.type === 'success' ? "bg-inera-success-95 text-inera-success-30" : "bg-inera-error-95 text-inera-error-30"
-                    )}>
-                      {uploadStatus.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
-                      <p className="text-sm font-medium">{uploadStatus.msg}</p>
+                      "alert mt-4",
+                      uploadStatus.type === 'success' ? "alert--success" : "alert--error"
+                    )} role="status">
+                      {uploadStatus.type === 'success' ? <CheckCircle2 className="alert-icon" size={20} /> : <AlertCircle className="alert-icon" size={20} />}
+                      <div className="alert-body">
+                        <div className="alert-title">{uploadStatus.type === 'success' ? 'Klart!' : 'Fel'}</div>
+                        <p>{uploadStatus.msg}</p>
+                      </div>
                     </div>
                   )}
 
-                  <div className="bg-inera-info-95 p-6 rounded-xl border border-inera-info-90">
-                    <h4 className="text-sm font-bold text-inera-info-20 mb-3 flex items-center gap-2">
-                      <AlertCircle size={16} />
-                      Instruktioner för filformat
-                    </h4>
-                    <ul className="text-xs text-inera-info-30 space-y-2 list-disc pl-4">
-                      <li>Använd semikolon (;) som avgränsare.</li>
-                      <li>Kolumn 3 (C) bör innehålla variantnamn (t.ex. Journal).</li>
-                      <li>Kolumn 5-14 (E-N) bör innehålla SUS-svar (1-5).</li>
-                      <li>Kolumn 15 (O) bör innehålla fritextkommentarer.</li>
-                    </ul>
+                  <div className="alert alert--info" role="status">
+                    <AlertCircle className="alert-icon" size={20} />
+                    <div className="alert-body">
+                      <div className="alert-title">Instruktioner för filformat</div>
+                      <ul className="text-xs space-y-1 list-disc pl-4 mt-2">
+                        <li>Använd semikolon (;) som avgränsare.</li>
+                        <li>Kolumn 3 (C) bör innehålla variantnamn (t.ex. Journal).</li>
+                        <li>Kolumn 5-14 (E-N) bör innehålla SUS-svar (1-5).</li>
+                        <li>Kolumn 15 (O) bör innehålla fritextkommentarer.</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1109,7 +1132,7 @@ export default function App() {
                   <h3 className="text-lg font-bold text-inera-neutral-10 mb-4">Senaste uppladdningar</h3>
                   <div className="space-y-3">
                     {measurements.slice(0, 10).map(m => (
-                      <div key={m.id} className="bg-white p-4 rounded-xl border border-inera-secondary-90 shadow-sm flex items-center justify-between group">
+                      <div key={m.id} className="card flex items-center justify-between group py-3">
                         <div className="flex items-center gap-3">
                           <div className="bg-inera-secondary-95 p-2 rounded-lg">
                             <FileSpreadsheet size={18} className="text-inera-neutral-40" />
@@ -1141,11 +1164,12 @@ export default function App() {
           )}
         </div>
       </main>
+      </div>
 
       {/* Reset Confirmation Modal */}
       {showResetConfirm && (
         <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-inera-secondary-90 overflow-hidden">
+          <div className="card p-0 shadow-xl max-w-md w-full overflow-hidden border-inera-secondary-90">
             <div className="p-6 border-b border-inera-secondary-90 flex items-center gap-3 bg-inera-error-95">
               <div className="bg-inera-error-40 p-2 rounded-lg text-white">
                 <AlertCircle size={24} />
@@ -1172,7 +1196,7 @@ export default function App() {
                   setResetError(null);
                 }}
                 disabled={isResetting}
-                className="px-4 py-2 rounded-lg font-bold text-inera-neutral-30 hover:bg-inera-secondary-90 transition-colors disabled:opacity-50"
+                className="btn btn--m btn--tertiary border border-transparent disabled:opacity-50"
               >
                 Avbryt
               </button>
@@ -1196,7 +1220,7 @@ export default function App() {
                   }
                 }}
                 disabled={isResetting}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg font-bold bg-inera-error-40 text-white hover:bg-inera-error-30 transition-colors disabled:opacity-50"
+                className="btn btn--m btn--destructive disabled:opacity-50"
               >
                 {isResetting ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
                 Ja, nollställ allt
@@ -1208,7 +1232,7 @@ export default function App() {
       {/* Delete Measurement Confirmation Modal */}
       {measurementToDelete && (
         <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full border border-inera-secondary-90 overflow-hidden">
+          <div className="card p-0 shadow-xl max-w-md w-full overflow-hidden border-inera-secondary-90">
             <div className="p-6 border-b border-inera-secondary-90 flex items-center gap-3 bg-inera-error-95">
               <div className="bg-inera-error-40 p-2 rounded-lg text-white">
                 <Trash2 size={24} />
@@ -1232,7 +1256,7 @@ export default function App() {
               <button
                 onClick={() => setMeasurementToDelete(null)}
                 disabled={isDeleting}
-                className="px-4 py-2 rounded-lg font-bold text-inera-neutral-30 hover:bg-inera-secondary-90 transition-colors disabled:opacity-50"
+                className="btn btn--m btn--tertiary border border-transparent disabled:opacity-50"
               >
                 Avbryt
               </button>
@@ -1249,7 +1273,7 @@ export default function App() {
                   }
                 }}
                 disabled={isDeleting}
-                className="px-4 py-2 bg-inera-error-40 hover:bg-inera-error-30 text-white rounded-lg font-bold transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+                className="btn btn--m btn--destructive shadow-sm disabled:opacity-50"
               >
                 {isDeleting ? (
                   <>
