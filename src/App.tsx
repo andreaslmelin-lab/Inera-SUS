@@ -152,10 +152,10 @@ export default function App() {
     if (selectedProductId) {
       const unsub = MeasurementService.getMeasurements(selectedProductId, setMeasurements);
       ProductService.getVariants(selectedProductId).then(vars => {
-        // Map "Generell" to "Övriga" and ensure unique names
+        // Map common fallbacks to "Other"
         const mapped = vars.map(v => ({
           ...v,
-          name: v.name === 'Generell' || v.name === 'Other' ? 'Övriga' : v.name
+          name: v.name === 'Generell' || v.name === 'Other' || v.name === 'Övriga' ? 'Other' : v.name
         }));
         const unique = Array.from(new Map(mapped.map(v => [v.name, v])).values());
         setVariants(unique);
@@ -287,9 +287,12 @@ export default function App() {
   };
 
   const filteredResponses = useMemo(() => {
-    if (selectedVariant === 'Alla') return responses;
-    return responses.filter(r => {
-      const mappedName = r.variantName === 'Generell' || r.variantName === 'Other' ? 'Övriga' : r.variantName;
+    // Filter by score validity first (Max SUS is 100)
+    let res = responses.filter(r => r.susScore <= 100);
+    
+    if (selectedVariant === 'Alla') return res;
+    return res.filter(r => {
+      const mappedName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Other' : r.variantName;
       return mappedName === selectedVariant;
     });
   }, [responses, selectedVariant]);
@@ -300,11 +303,50 @@ export default function App() {
   }, [filteredResponses]);
 
   const trendData = useMemo(() => {
-    return [...measurements].reverse().map(m => ({
-      date: format(m.date, 'MMM yyyy', { locale: sv }),
-      score: Math.round(m.averageScore * 10) / 10
-    }));
-  }, [measurements]);
+    if (filteredResponses.length === 0) return [];
+    
+    // Group filtered responses by date (from startDate or submitDate)
+    const grouped: Record<string, { total: number; count: number; date: Date }> = {};
+    
+    filteredResponses.forEach(r => {
+      let date = r.startDate || r.submitDate;
+      
+      // Robust date conversion check to handle potential Timestamp objects or strings
+      if (!date) return;
+      if (!(date instanceof Date)) {
+        if ((date as any).toDate) {
+          date = (date as any).toDate();
+        } else if (typeof date === 'string') {
+          date = new Date(date);
+        } else {
+          try {
+            date = new Date(date as any);
+          } catch(e) {
+            return;
+          }
+        }
+      }
+      
+      if (isNaN(date.getTime())) return;
+      
+      const dateKey = format(date, 'yyyy-MM-dd');
+      
+      if (!grouped[dateKey]) {
+        grouped[dateKey] = { total: 0, count: 0, date };
+      }
+      grouped[dateKey].total += r.susScore;
+      grouped[dateKey].count++;
+    });
+    
+    return Object.entries(grouped)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, data]) => ({
+        date: format(data.date, 'yyyy-MM-dd'),
+        fullDate: format(data.date, 'PPP', { locale: sv }),
+        score: Math.round((data.total / data.count) * 10) / 10,
+        count: data.count
+      }));
+  }, [filteredResponses]);
 
   const distributionData = useMemo(() => {
     const bins = [
@@ -430,23 +472,23 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white pb-12">
       {/* Header */}
-      <header className="bg-inera-primary-30 text-white px-6 py-8 border-b-4 border-inera-secondary-95">
+      <header className="bg-inera-primary-30 text-white px-6 py-8 border-b-4 border-inera-secondary-40 shadow-md">
         <div className="max-w-[80rem] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="bg-white/20 p-3 rounded-lg backdrop-blur-sm">
+            <div className="bg-white/20 p-3 rounded-lg backdrop-blur-sm border border-white/20">
               <Database className="text-white" size={24} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold font-display leading-tight text-white">Inera SUS</h1>
-              <p className="text-white text-sm mt-1">Hantera och visualisera System Usability Scale-mätningar</p>
+              <h1 className="text-2xl font-bold font-display leading-tight text-white">Inera SUS Analys</h1>
+              <p className="text-white/90 text-sm mt-1">Hantera och visualisera mätningar per produkt och variant</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
              <div className="text-right hidden sm:block">
-               <p className="text-sm font-bold text-white">{user.displayName}</p>
-               <p className="text-xs text-white">{user.email}</p>
+               <p className="text-sm font-bold text-white leading-none mb-1">{user.displayName}</p>
+               <p className="text-[10px] text-white/80">{user.email}</p>
              </div>
-             <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=A33662&color=fff`} alt="" className="w-10 h-10 rounded-full border-2 border-inera-secondary-40" />
+             <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=A33662&color=fff`} alt="" className="w-10 h-10 rounded-full border-2 border-inera-secondary-40 shadow-sm" />
           </div>
         </div>
       </header>
@@ -495,85 +537,84 @@ export default function App() {
         {/* Main Content Area */}
         <main className="min-w-0">
           {activeTab === 'dashboard' && (
-            <div className="bg-inera-secondary-95 border border-inera-neutral-90 rounded-lg p-4 mb-8 flex flex-wrap items-center justify-between gap-4">
-              <h2 className="text-xl font-bold font-display text-inera-neutral-10">
-                Dashboard
-              </h2>
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <label className="label mb-0 whitespace-nowrap !text-sm">Mätning:</label>
-                  <select 
-                    value={selectedMeasurementId}
-                    onChange={(e) => {
-                      const mId = e.target.value;
-                      setSelectedMeasurementId(mId);
-                      if (mId !== 'latest' && mId !== 'all') {
-                        const m = allMeasurements.find(am => am.id === mId);
-                        if (m) {
-                          setSelectedProductId(m.productId);
-                          setView('product');
-                        }
-                      }
-                    }}
-                    className="select !h-8 !py-1 !text-sm w-auto min-w-[180px]"
-                  >
-                    <option value="all">Alla mätningar (Aggregerat)</option>
-                    <option value="latest">Senaste mätning per produkt</option>
-                    {allMeasurements.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {format(m.date, 'yyyy-MM-dd HH:mm')} - {products.find(p => p.id === m.productId)?.name || m.productId}
-                      </option>
-                    ))}
-                  </select>
+            <div className="bg-inera-secondary-95 border border-inera-secondary-90 rounded-2xl p-6 mb-8 shadow-sm">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div>
+                  <h2 className="text-xl font-bold font-display text-inera-neutral-10 flex items-center gap-2">
+                    <LayoutDashboard size={24} className="text-inera-primary-40" />
+                    Dashboard & Insikter
+                  </h2>
+                  <p className="text-xs text-inera-neutral-40 mt-1 uppercase tracking-wider font-semibold">
+                    {view === 'company' ? 'Aggregerad vy för Inera' : `Analys för: ${products.find(p => p.id === selectedProductId)?.name || 'Vald produkt'}`}
+                  </p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <label className="label mb-0 whitespace-nowrap !text-sm">Produkt:</label>
-                  <select 
-                    value={view === 'company' ? 'Alla' : selectedProductId || 'Alla'}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === 'Alla') {
-                        setView('company');
-                        setSelectedProductId(null);
-                        setSelectedVariant('Alla');
-                        setSelectedMeasurementId('all');
-                      } else {
-                        setView('product');
-                        setSelectedProductId(val);
-                        setSelectedVariant('Alla');
-                        if (selectedMeasurementId !== 'latest' && selectedMeasurementId !== 'all') {
-                          const sm = allMeasurements.find(m => m.id === selectedMeasurementId);
-                          if (sm && sm.productId !== val) {
-                            setSelectedMeasurementId('latest');
-                          }
-                        }
-                      }
-                    }}
-                    className="select !h-8 !py-1 !text-sm w-auto min-w-[150px]"
-                  >
-                    <option value="Alla">Alla produkter</option>
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                {view === 'product' && (
-                  <div className="flex items-center gap-2">
-                    <label className="label mb-0 whitespace-nowrap !text-sm">Variant:</label>
+                <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-inera-secondary-90">
+                  <div className="flex flex-col gap-1 px-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Filter: Produkt</label>
                     <select 
-                      value={selectedVariant}
-                      onChange={(e) => setSelectedVariant(e.target.value)}
-                      className="select !h-8 !py-1 !text-sm w-auto min-w-[150px]"
+                      value={view === 'company' ? 'Alla' : selectedProductId || 'Alla'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'Alla') {
+                          setView('company');
+                          setSelectedProductId(null);
+                          setSelectedVariant('Alla');
+                        } else {
+                          setView('product');
+                          setSelectedProductId(val);
+                          setSelectedVariant('Alla');
+                        }
+                      }}
+                      className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
                     >
-                      <option value="Alla">Hela produkten</option>
-                      {variants.map(v => (
-                        <option key={v.id} value={v.name}>{v.name}</option>
+                      <option value="Alla">Alla produkter avg.</option>
+                      {products.map(p => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
                     </select>
                   </div>
-                )}
+                  
+                  <div className="hidden sm:block w-px h-10 bg-inera-secondary-90" />
+
+                  <div className="flex flex-col gap-1 px-2">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Tidsperiod / Mätning</label>
+                    <select 
+                      value={selectedMeasurementId}
+                      onChange={(e) => setSelectedMeasurementId(e.target.value)}
+                      className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
+                    >
+                      <option value="all">Alla datum (Aggregerat)</option>
+                      {measurements.length > 0 && (
+                        <optgroup label="Enskilda mätningar">
+                          {measurements.map(m => (
+                            <option key={m.id} value={m.id}>
+                              {format(m.date, 'yyyy-MM-dd')} — {m.responseCount} svar
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </div>
+
+                  {view === 'product' && variants.length > 0 && (
+                    <>
+                      <div className="hidden sm:block w-px h-10 bg-inera-secondary-90" />
+                      <div className="flex flex-col gap-1 px-2">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Välj Variant</label>
+                        <select 
+                          value={selectedVariant}
+                          onChange={(e) => setSelectedVariant(e.target.value)}
+                          className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
+                        >
+                          <option value="Alla">Hela produkten (Allt)</option>
+                          {variants.map(v => (
+                            <option key={v.id} value={v.name}>{v.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -672,7 +713,7 @@ export default function App() {
                             <div className="space-y-2 pl-6 border-l-2 border-inera-secondary-90 ml-2">
                               {Object.entries(
                                 Object.entries(p.latest.variantScores).reduce((acc, [vName, vData]: [string, any]) => {
-                                  const mappedName = vName === 'Generell' || vName === 'Other' ? 'Övriga' : vName;
+                                  const mappedName = vName === 'Generell' || vName === 'Other' || vName === 'Övriga' ? 'Other' : vName;
                                   if (!acc[mappedName]) {
                                     acc[mappedName] = { ...vData };
                                   } else {
@@ -864,18 +905,39 @@ export default function App() {
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={trendData}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f6f1e9" />
-                            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#8e9299', fontSize: 12}} />
+                            <XAxis 
+                              dataKey="date" 
+                              axisLine={false} 
+                              tickLine={false} 
+                              tick={{fill: '#8e9299', fontSize: 10}} 
+                            />
                             <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{fill: '#8e9299', fontSize: 12}} />
                             <Tooltip 
-                              contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  const d = payload[0].payload;
+                                  return (
+                                    <div className="bg-white p-3 rounded-xl shadow-xl border border-inera-secondary-90 text-xs">
+                                      <p className="font-bold mb-1 text-inera-neutral-10">{d.fullDate}</p>
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-inera-primary-40" />
+                                        <span>SUS: <span className="font-bold">{d.score}</span></span>
+                                      </div>
+                                      <p className="text-inera-neutral-40 mt-1">Baserat på {d.count} svar</p>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
                             />
                             <Line 
                               type="monotone" 
                               dataKey="score" 
                               stroke="#A33662" 
                               strokeWidth={3} 
-                              dot={{ r: 6, fill: '#A33662', strokeWidth: 2, stroke: '#fff' }}
-                              activeDot={{ r: 8 }}
+                              dot={{ r: 4, fill: '#A33662', strokeWidth: 2, stroke: '#fff' }}
+                              activeDot={{ r: 6 }}
+                              animationDuration={1000}
                             />
                           </LineChart>
                         </ResponsiveContainer>
@@ -1014,9 +1076,14 @@ export default function App() {
                                   return (
                                     <div key={r.id} className="bg-inera-secondary-95 p-4 rounded-xl border border-inera-secondary-90">
                                       <div className="flex items-center justify-between mb-2">
-                                        <div className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", isPositive ? "bg-inera-success-95 text-inera-success-50 border border-inera-success-40" : "bg-inera-error-95 text-inera-error-50 border border-inera-error-40")}>
-                                          {isPositive ? 'Positiv' : 'Negativ'} (SUS: {Math.round(r.susScore)})
-                                        </div>
+                                          <div className="flex items-center gap-2">
+                                            <div className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", isPositive ? "bg-inera-success-95 text-inera-success-50 border border-inera-success-40" : "bg-inera-error-95 text-inera-error-50 border border-inera-error-40")}>
+                                              {isPositive ? 'Positiv' : 'Negativ'} (SUS: {Math.round(r.susScore)})
+                                            </div>
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-inera-secondary-90 text-inera-neutral-30 border border-inera-secondary-80">
+                                              {r.variantName === 'Other' && r.otherText ? `Other: ${r.otherText}` : r.variantName}
+                                            </span>
+                                          </div>
                                         <span className="text-[10px] text-inera-neutral-60">{format(r.submitDate, 'yyyy-MM-dd HH:mm')}</span>
                                       </div>
                                       <p className="text-inera-neutral-20 leading-relaxed italic text-sm">"{r.comment}"</p>
@@ -1116,10 +1183,11 @@ export default function App() {
                     <div className="alert-body">
                       <div className="alert-title">Instruktioner för filformat</div>
                       <ul className="text-xs space-y-1 list-disc pl-4 mt-2">
-                        <li>Använd semikolon (;) som avgränsare.</li>
-                        <li>Kolumn 3 (C) bör innehålla variantnamn (t.ex. Journal).</li>
-                        <li>Kolumn 5-14 (E-N) bör innehålla SUS-svar (1-5).</li>
-                        <li>Kolumn 15 (O) bör innehålla fritextkommentarer.</li>
+                        <li>Ladda upp rader direkt från exportfilen.</li>
+                        <li>Automatiskt filter: Rader med värdet 0 på frågan om användaren kommer ihåg produkten hoppas över.</li>
+                        <li>Automatiskt gruppering: Svar i "Other"-kolumnen slås ihop under varianten "Other".</li>
+                        <li>Statistik baseras på kolumnerna för SUS-frågor och kommentarer.</li>
+                        <li>Trenden visas baserat på "Start Date (UTC)".</li>
                       </ul>
                     </div>
                   </div>
