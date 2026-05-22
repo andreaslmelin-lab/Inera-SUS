@@ -9,7 +9,7 @@ import {
   AlertCircle, CheckCircle2, Loader2, Search, ArrowLeft,
   Info, Calendar, ArrowUpRight, ArrowDownRight, Trash2, Settings
 } from 'lucide-react';
-import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db } from './firebase';
+import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword } from './firebase';
 import { Product, ProductService, Measurement, MeasurementService, ResponseData, Variant } from './services';
 import { cn, getSusGrade, calculateMedian, getMedianExplanation } from './lib/utils';
 import { format } from 'date-fns';
@@ -17,6 +17,121 @@ import { sv } from 'date-fns/locale';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 // --- Components ---
+
+const AuthScreen = () => {
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleGoogleLogin = async () => {
+    try {
+      setError('');
+      await signInWithPopup(auth, googleProvider);
+    } catch (err: any) {
+      if (err.code === 'auth/unauthorized-domain') {
+        setError('Domänen är inte auktoriserad för Google-inloggning. Vänligen lägg till domänen i Firebase Console > Authentication > Settings > Authorized domains. Eller använd e-post och lösenord.');
+      } else {
+        setError(err.message || 'Ett fel uppstod vid inloggning.');
+      }
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setError('');
+      if (isRegistering) {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+    } catch (err: any) {
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+        setError('Felaktig e-post eller lösenord.');
+      } else if (err.code === 'auth/email-already-in-use') {
+        setError('Ett konto med den här e-postadressen finns redan.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('Lösenordet måste vara minst 6 tecken långt.');
+      } else {
+        setError(err.message || 'Ett fel uppstod vid inloggning.');
+      }
+    }
+  };
+
+  return (
+    <div className="h-screen w-full flex flex-col items-center justify-center bg-inera-secondary-95 p-4">
+      <div className="card p-8 shadow-xl max-w-md w-full text-center border-inera-secondary-90">
+        <div className="bg-inera-primary-40 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-inera-primary-70">
+          <Database className="text-white" size={32} />
+        </div>
+        <h1 className="text-3xl font-bold text-inera-neutral-10 mb-2">Inera SUS Tracker</h1>
+        <p className="text-inera-neutral-40 mb-8">Logga in för att hantera och visualisera SUS-mätningar för Ineras produkter.</p>
+
+        {error && (
+          <div className="bg-inera-error-95 text-inera-error-40 border border-inera-error-40 p-4 rounded-lg text-sm text-left mb-6 flex items-start gap-2">
+            <AlertCircle size={18} className="shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleEmailAuth} className="space-y-4 text-left mb-6">
+          <div>
+            <label className="block text-sm font-bold text-inera-neutral-20 mb-1">E-post</label>
+            <input 
+              type="email" 
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="input w-full"
+              placeholder="namn@exempel.se"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-inera-neutral-20 mb-1">Lösenord</label>
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="input w-full"
+              placeholder="Min. 6 tecken"
+              required
+            />
+          </div>
+          <button
+            type="submit"
+            className="w-full btn btn--l btn--primary"
+          >
+            {isRegistering ? 'Skapa konto' : 'Logga in'}
+          </button>
+        </form>
+
+        <div className="flex items-center gap-4 mb-6">
+          <div className="h-px bg-inera-secondary-90 flex-1"></div>
+          <span className="text-xs text-inera-neutral-40 font-bold uppercase tracking-wider">Eller</span>
+          <div className="h-px bg-inera-secondary-90 flex-1"></div>
+        </div>
+
+        <button
+          onClick={handleGoogleLogin}
+          type="button"
+          className="w-full btn btn--l btn--secondary border-inera-neutral-70 shadow-sm mb-6"
+        >
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+          Logga in med Google
+        </button>
+
+        <button 
+          onClick={() => { setIsRegistering(!isRegistering); setError(''); }}
+          type="button"
+          className="text-sm text-inera-primary-40 hover:underline font-bold"
+        >
+          {isRegistering ? 'Har du redan ett konto? Logga in.' : 'Inget konto? Skapa ett här.'}
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
   <button
@@ -122,7 +237,7 @@ export default function App() {
           await setDoc(userRef, {
             uid: user.uid,
             email: user.email,
-            displayName: user.displayName,
+            displayName: user.displayName || user.email?.split('@')[0] || 'User',
             role: 'user'
           });
         }
@@ -264,7 +379,6 @@ export default function App() {
       return calculateStats(variantResponses);
     }
   }, [responses, selectedVariant]);
-  const handleLogin = () => signInWithPopup(auth, googleProvider);
   const handleLogout = () => auth.signOut();
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -449,24 +563,7 @@ export default function App() {
   }
 
   if (!user) {
-    return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-inera-secondary-95 p-4">
-        <div className="card p-8 shadow-xl max-w-md w-full text-center border-inera-secondary-90">
-          <div className="bg-inera-primary-40 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-inera-primary-70">
-            <Database className="text-white" size={32} />
-          </div>
-          <h1 className="text-3xl font-bold text-inera-neutral-10 mb-2">Inera SUS Tracker</h1>
-          <p className="text-inera-neutral-40 mb-8">Logga in för att hantera och visualisera SUS-mätningar för Ineras produkter.</p>
-          <button
-            onClick={handleLogin}
-            className="w-full btn btn--l btn--secondary border-inera-neutral-70 shadow-sm"
-          >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-            Logga in med Google
-          </button>
-        </div>
-      </div>
-    );
+    return <AuthScreen />;
   }
 
   return (
@@ -485,10 +582,10 @@ export default function App() {
           </div>
           <div className="flex items-center gap-4">
              <div className="text-right hidden sm:block">
-               <p className="text-sm font-bold text-white leading-none mb-1">{user.displayName}</p>
+               <p className="text-sm font-bold text-white leading-none mb-1">{user.displayName || user.email?.split('@')[0]}</p>
                <p className="text-[10px] text-white/80">{user.email}</p>
              </div>
-             <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}&background=A33662&color=fff`} alt="" className="w-10 h-10 rounded-full border-2 border-inera-secondary-40 shadow-sm" />
+             <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email?.split('@')[0] || 'User'}&background=A33662&color=fff`} alt="" className="w-10 h-10 rounded-full border-2 border-inera-secondary-40 shadow-sm" />
           </div>
         </div>
       </header>
