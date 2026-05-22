@@ -9,24 +9,30 @@ import {
   AlertCircle, CheckCircle2, Loader2, Search, ArrowLeft,
   Info, Calendar, ArrowUpRight, ArrowDownRight, Trash2, Settings
 } from 'lucide-react';
-import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword } from './firebase';
+import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from './firebase';
 import { Product, ProductService, Measurement, MeasurementService, ResponseData, Variant } from './services';
 import { cn, getSusGrade, calculateMedian, getMedianExplanation } from './lib/utils';
 import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
+import { motion, AnimatePresence } from 'motion/react';
+
+const ADMIN_EMAILS = ['andreas.melin@inera.se', 'andreas.melin@inera', 'andreas.l.melin@gmail.com'];
 
 // --- Components ---
 
-const AuthScreen = () => {
+const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
   const [isRegistering, setIsRegistering] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(initialError);
+  const [message, setMessage] = useState('');
 
   const handleGoogleLogin = async () => {
     try {
       setError('');
+      setMessage('');
       await signInWithPopup(auth, googleProvider);
     } catch (err: any) {
       if (err.code === 'auth/unauthorized-domain') {
@@ -41,9 +47,31 @@ const AuthScreen = () => {
     e.preventDefault();
     try {
       setError('');
+      setMessage('');
+      
+      if (isForgotPassword) {
+        if (!email) {
+          setError('Ange din e-postadress för att återställa lösenordet.');
+          return;
+        }
+        await sendPasswordResetEmail(auth, email);
+        setMessage('Länk för att återställa lösenordet har skickats till din e-postadress.');
+        setIsForgotPassword(false);
+        setPassword('');
+        return;
+      }
+
       if (isRegistering) {
+        if (!email.toLowerCase().endsWith('@inera.se')) {
+          setError('Bara e-postadresser från inera.se är tillåtna.');
+          return;
+        }
         await createUserWithEmailAndPassword(auth, email, password);
       } else {
+        if (!email.toLowerCase().endsWith('@inera.se')) {
+          setError('Bara e-postadresser från inera.se är tillåtna.');
+          return;
+        }
         await signInWithEmailAndPassword(auth, email, password);
       }
     } catch (err: any) {
@@ -53,6 +81,8 @@ const AuthScreen = () => {
         setError('Ett konto med den här e-postadressen finns redan.');
       } else if (err.code === 'auth/weak-password') {
         setError('Lösenordet måste vara minst 6 tecken långt.');
+      } else if (err.code === 'auth/user-not-found') {
+        setError('Det finns inget konto med den här e-postadressen.');
       } else {
         setError(err.message || 'Ett fel uppstod vid inloggning.');
       }
@@ -66,7 +96,11 @@ const AuthScreen = () => {
           <Database className="text-white" size={32} />
         </div>
         <h1 className="text-3xl font-bold text-inera-neutral-10 mb-2">Inera SUS Tracker</h1>
-        <p className="text-inera-neutral-40 mb-8">Logga in för att hantera och visualisera SUS-mätningar för Ineras produkter.</p>
+        <p className="text-inera-neutral-40 mb-8">
+          {isForgotPassword 
+            ? 'Återställ ditt lösenord' 
+            : 'Logga in för att hantera och visualisera SUS-mätningar för Ineras produkter.'}
+        </p>
 
         {error && (
           <div className="bg-inera-error-95 text-inera-error-40 border border-inera-error-40 p-4 rounded-lg text-sm text-left mb-6 flex items-start gap-2">
@@ -75,7 +109,14 @@ const AuthScreen = () => {
           </div>
         )}
 
-        <form onSubmit={handleEmailAuth} className="space-y-4 text-left mb-6">
+        {message && (
+          <div className="bg-inera-success-95 text-inera-success-40 border border-inera-success-40 p-4 rounded-lg text-sm text-left mb-6 flex items-start gap-2">
+            <CheckCircle2 size={18} className="shrink-0 mt-0.5" />
+            <span>{message}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleEmailAuth} className="space-y-4 text-left mb-4">
           <div>
             <label className="block text-sm font-bold text-inera-neutral-20 mb-1">E-post</label>
             <input 
@@ -83,51 +124,169 @@ const AuthScreen = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="input w-full"
-              placeholder="namn@exempel.se"
+              placeholder="namn@inera.se"
               required
             />
           </div>
-          <div>
-            <label className="block text-sm font-bold text-inera-neutral-20 mb-1">Lösenord</label>
-            <input 
-              type="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input w-full"
-              placeholder="Min. 6 tecken"
-              required
-            />
-          </div>
+          {!isForgotPassword && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-bold text-inera-neutral-20">Lösenord</label>
+                {!isRegistering && (
+                  <button 
+                    type="button"
+                    onClick={() => { setIsForgotPassword(true); setError(''); setMessage(''); }}
+                    className="text-xs text-inera-primary-40 hover:underline"
+                  >
+                    Glömt lösenordet?
+                  </button>
+                )}
+              </div>
+              <input 
+                type="password" 
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input w-full"
+                placeholder="Min. 6 tecken"
+                required
+              />
+            </div>
+          )}
           <button
             type="submit"
             className="w-full btn btn--l btn--primary"
           >
-            {isRegistering ? 'Skapa konto' : 'Logga in'}
+            {isForgotPassword ? 'Återställ lösenord' : (isRegistering ? 'Skapa konto' : 'Logga in')}
           </button>
         </form>
 
-        <div className="flex items-center gap-4 mb-6">
-          <div className="h-px bg-inera-secondary-90 flex-1"></div>
-          <span className="text-xs text-inera-neutral-40 font-bold uppercase tracking-wider">Eller</span>
-          <div className="h-px bg-inera-secondary-90 flex-1"></div>
-        </div>
+        {isForgotPassword ? (
+          <button 
+            onClick={() => { setIsForgotPassword(false); setError(''); setMessage(''); }}
+            type="button"
+            className="text-sm text-inera-primary-40 hover:underline font-bold mt-4"
+          >
+            Tillbaka till inloggning
+          </button>
+        ) : (
+          <>
+            <div className="flex items-center gap-4 mb-6 mt-6">
+              <div className="h-px bg-inera-secondary-90 flex-1"></div>
+              <span className="text-xs text-inera-neutral-40 font-bold uppercase tracking-wider">Eller</span>
+              <div className="h-px bg-inera-secondary-90 flex-1"></div>
+            </div>
 
-        <button
-          onClick={handleGoogleLogin}
-          type="button"
-          className="w-full btn btn--l btn--secondary border-inera-neutral-70 shadow-sm mb-6"
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-          Logga in med Google
-        </button>
+            <button
+              onClick={handleGoogleLogin}
+              type="button"
+              className="w-full btn btn--l btn--secondary border-inera-neutral-70 shadow-sm mb-6"
+            >
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
+              Logga in med Google
+            </button>
 
-        <button 
-          onClick={() => { setIsRegistering(!isRegistering); setError(''); }}
-          type="button"
-          className="text-sm text-inera-primary-40 hover:underline font-bold"
-        >
-          {isRegistering ? 'Har du redan ett konto? Logga in.' : 'Inget konto? Skapa ett här.'}
-        </button>
+            <button 
+              onClick={() => { setIsRegistering(!isRegistering); setError(''); setMessage(''); }}
+              type="button"
+              className="text-sm text-inera-primary-40 hover:underline font-bold"
+            >
+              {isRegistering ? 'Har du redan ett konto? Logga in.' : 'Inget konto? Skapa ett här.'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const AdminView = () => {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const q = collection(db, 'users');
+      const snap = await getDocs(q);
+      const userList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setUsers(userList);
+    } catch(err: any) {
+      setError(err.message || 'Kunde inte hämta användare');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const toggleBlock = async (userId: string, currentStatus: boolean) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        isBlocked: !currentStatus
+      });
+      fetchUsers();
+    } catch(err: any) {
+      setError(err.message || 'Kunde inte blockera/avblockera användare');
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center"><Loader2 className="animate-spin text-inera-primary-40 mx-auto" size={32} /></div>;
+
+  return (
+    <div className="card p-6 shadow-md border-inera-secondary-90">
+      <h2 className="text-xl font-bold font-display text-inera-neutral-10 mb-4">Administratör - Användare</h2>
+      {error && <div className="text-inera-error-40 mb-4 bg-inera-error-95 border-inera-error-40 border p-4 rounded-lg">{error}</div>}
+      
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse min-w-[600px]">
+          <thead>
+            <tr className="border-b border-inera-secondary-90 text-sm text-inera-neutral-40">
+              <th className="pb-2 font-bold px-2">Namn</th>
+              <th className="pb-2 font-bold px-2">E-post</th>
+              <th className="pb-2 font-bold px-2">Senast inloggad</th>
+              <th className="pb-2 font-bold px-2">Status</th>
+              <th className="pb-2 font-bold px-2">Åtgärd</th>
+            </tr>
+          </thead>
+          <motion.tbody layout>
+            <AnimatePresence mode="popLayout">
+            {users.map((u) => (
+              <motion.tr 
+                key={u.id} 
+                layout
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="border-b border-inera-secondary-95 last:border-0 hover:bg-inera-secondary-95/50"
+              >
+                <td className="py-3 px-2 text-sm text-inera-neutral-10 font-medium">{u.displayName || 'Okänd'}</td>
+                <td className="py-3 px-2 text-sm text-inera-neutral-20">{u.email}</td>
+                <td className="py-3 px-2 text-sm text-inera-neutral-20">
+                  {u.lastLoggedIn ? format(u.lastLoggedIn.toDate ? u.lastLoggedIn.toDate() : new Date(u.lastLoggedIn.seconds * 1000), 'yyyy-MM-dd HH:mm') : 'Aldrig'}
+                </td>
+                <td className="py-3 px-2 text-sm">
+                  {u.isBlocked ? (
+                    <span className="bg-inera-error-95 text-inera-error-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-error-40">Blockerad</span>
+                  ) : (
+                    <span className="bg-inera-success-95 text-inera-success-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-success-40">Aktiv</span>
+                  )}
+                </td>
+                <td className="py-3 px-2">
+                  <button 
+                    onClick={() => toggleBlock(u.id, !!u.isBlocked)}
+                    className={cn("btn btn--s", u.isBlocked ? "btn--secondary" : "btn--destructive")}
+                  >
+                    {u.isBlocked ? 'Avblockera' : 'Blockera'}
+                  </button>
+                </td>
+              </motion.tr>
+            ))}
+            </AnimatePresence>
+          </motion.tbody>
+        </table>
       </div>
     </div>
   );
@@ -189,7 +348,8 @@ const SusLegend = () => (
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'admin'>('dashboard');
+  const [authError, setAuthError] = useState<string>('');
   const [view, setView] = useState<'company' | 'product'>('company');
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -233,15 +393,32 @@ export default function App() {
       if (user) {
         const userRef = doc(db, 'users', user.uid);
         const userSnap = await getDoc(userRef);
-        if (!userSnap.exists()) {
+        
+        let shouldBlock = false;
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          if (userData.isBlocked) {
+            shouldBlock = true;
+          }
+        }
+        
+        if (shouldBlock) {
+          await auth.signOut();
+          setUser(null);
+          setAuthError('Ditt konto har blivit blockerat. Kontakta administratör.');
+        } else {
           await setDoc(userRef, {
             uid: user.uid,
             email: user.email,
             displayName: user.displayName || user.email?.split('@')[0] || 'User',
-            role: 'user'
-          });
+            role: userSnap.exists() ? userSnap.data().role : 'user',
+            lastLoggedIn: serverTimestamp(),
+            isBlocked: false
+          }, { merge: true });
+          
+          setUser(user);
+          setAuthError('');
         }
-        setUser(user);
       } else {
         setUser(null);
       }
@@ -563,7 +740,7 @@ export default function App() {
   }
 
   if (!user) {
-    return <AuthScreen />;
+    return <AuthScreen initialError={authError} />;
   }
 
   return (
@@ -609,6 +786,14 @@ export default function App() {
               active={activeTab === 'upload'} 
               onClick={() => setActiveTab('upload')} 
             />
+            {user.email && ADMIN_EMAILS.includes(user.email) && (
+              <SidebarItem 
+                icon={Users} 
+                label="Administratör" 
+                active={activeTab === 'admin'} 
+                onClick={() => setActiveTab('admin')} 
+              />
+            )}
           </nav>
 
           <div className="pt-4 border-t border-inera-secondary-90 space-y-2">
@@ -716,9 +901,17 @@ export default function App() {
             </div>
           )}
 
-          <div>
+          <div className="min-w-0 w-full overflow-x-hidden">
+            <AnimatePresence mode="wait">
             {activeTab === 'dashboard' ? (
-            <div className="space-y-8">
+              <motion.div
+                key="dashboard"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="space-y-8"
+              >
               {view === 'company' ? (
                 <div className="space-y-8">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -755,8 +948,17 @@ export default function App() {
                       </div>
                     </div>
                     <div className="p-6 space-y-6">
+                      <AnimatePresence mode="popLayout">
                       {filteredProducts.map(p => (
-                        <div key={p.id} className="space-y-3">
+                        <motion.div 
+                          key={p.id} 
+                          layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          transition={{ duration: 0.2 }}
+                          className="space-y-3"
+                        >
                           {/* Product Bar */}
                           <div 
                             className="flex items-center gap-4 cursor-pointer group"
@@ -859,8 +1061,9 @@ export default function App() {
                               ))}
                             </div>
                           )}
-                        </div>
+                        </motion.div>
                       ))}
+                      </AnimatePresence>
                       {filteredProducts.length === 0 && (
                         <div className="py-12 text-center text-inera-neutral-40">
                           Inga produkter hittades.
@@ -1168,10 +1371,19 @@ export default function App() {
                                 </div>
                               </div>
                               <div className="space-y-3">
+                                <AnimatePresence mode="popLayout">
                                 {responses.map(r => {
                                   const isPositive = r.susScore >= 68;
                                   return (
-                                    <div key={r.id} className="bg-inera-secondary-95 p-4 rounded-xl border border-inera-secondary-90">
+                                    <motion.div 
+                                      key={r.id} 
+                                      layout
+                                      initial={{ opacity: 0, y: 10 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, scale: 0.95 }}
+                                      transition={{ duration: 0.2 }}
+                                      className="bg-inera-secondary-95 p-4 rounded-xl border border-inera-secondary-90"
+                                    >
                                       <div className="flex items-center justify-between mb-2">
                                           <div className="flex items-center gap-2">
                                             <div className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", isPositive ? "bg-inera-success-95 text-inera-success-50 border border-inera-success-40" : "bg-inera-error-95 text-inera-error-50 border border-inera-error-40")}>
@@ -1184,9 +1396,10 @@ export default function App() {
                                         <span className="text-[10px] text-inera-neutral-60">{format(r.submitDate, 'yyyy-MM-dd HH:mm')}</span>
                                       </div>
                                       <p className="text-inera-neutral-20 leading-relaxed italic text-sm">"{r.comment}"</p>
-                                    </div>
+                                    </motion.div>
                                   );
                                 })}
+                                </AnimatePresence>
                               </div>
                             </div>
                           );
@@ -1196,9 +1409,16 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </div>
-          ) : (
-            <div className="max-w-2xl mx-auto">
+              </motion.div>
+            ) : activeTab === 'upload' ? (
+              <motion.div
+                key="upload"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="max-w-2xl mx-auto"
+              >
               <div className="card p-8 shadow-sm border-inera-secondary-90">
                 <div className="flex items-center gap-4 mb-8">
                   <div className="bg-inera-secondary-95 p-3 rounded-xl">
@@ -1325,10 +1545,21 @@ export default function App() {
                   </div>
                 </div>
               )}
-            </div>
-          )}
-        </div>
-      </main>
+              </motion.div>
+            ) : activeTab === 'admin' && user?.email && ADMIN_EMAILS.includes(user.email) ? (
+              <motion.div
+                key="admin"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+              >
+                <AdminView />
+              </motion.div>
+            ) : null}
+            </AnimatePresence>
+          </div>
+        </main>
       </div>
 
       {/* Reset Confirmation Modal */}
