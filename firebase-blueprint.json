@@ -64,6 +64,19 @@
         "submitDate": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "measurementId", "productId", "susScore"]
+    },
+    "RawDataExport": {
+      "title": "RawDataExport",
+      "description": "Raw data export from external apps",
+      "type": "object",
+      "properties": {
+        "source": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "organization": { "type": "string" },
+        "metrics": { "type": "object" },
+        "granularData": { "type": "object" }
+      },
+      "required": ["source", "timestamp"]
     }
   },
   "firestore": {
@@ -86,6 +99,10 @@
     "/responses/{responseId}": {
       "schema": { "$ref": "Response" },
       "description": "Individual responses"
+    },
+    "/raw_data_exports/{exportId}": {
+      "schema": { "$ref": "RawDataExport" },
+      "description": "Raw data exports"
     }
   }
 }

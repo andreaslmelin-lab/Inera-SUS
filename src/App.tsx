@@ -16,6 +16,8 @@ import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
 import { doc, getDoc, setDoc, updateDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
+import ApiView from './components/ApiView';
+import RawDataView from './components/RawDataView';
 
 const ADMIN_EMAILS = ['andreas.melin@inera.se', 'andreas.melin@inera', 'andreas.l.melin@gmail.com'];
 
@@ -348,7 +350,7 @@ const SusLegend = () => (
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'admin'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'admin' | 'api' | 'rawdata'>('dashboard');
   const [authError, setAuthError] = useState<string>('');
   const [view, setView] = useState<'company' | 'product'>('company');
   const [products, setProducts] = useState<Product[]>([]);
@@ -794,6 +796,18 @@ export default function App() {
                 onClick={() => setActiveTab('admin')} 
               />
             )}
+            <SidebarItem 
+              icon={Database} 
+              label="API-inställningar" 
+              active={activeTab === 'api'} 
+              onClick={() => setActiveTab('api')} 
+            />
+            <SidebarItem 
+              icon={Database} 
+              label="Rådata" 
+              active={activeTab === 'rawdata'} 
+              onClick={() => setActiveTab('rawdata')} 
+            />
           </nav>
 
           <div className="pt-4 border-t border-inera-secondary-90 space-y-2">
@@ -1555,6 +1569,26 @@ export default function App() {
                 transition={{ duration: 0.2, ease: "easeOut" }}
               >
                 <AdminView />
+              </motion.div>
+            ) : activeTab === 'api' ? (
+              <motion.div
+                key="api"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+              >
+                <ApiView />
+              </motion.div>
+            ) : activeTab === 'rawdata' ? (
+              <motion.div
+                key="rawdata"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+              >
+                <RawDataView />
               </motion.div>
             ) : null}
             </AnimatePresence>

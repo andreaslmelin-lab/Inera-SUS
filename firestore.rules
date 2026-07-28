@@ -60,6 +60,11 @@ service cloud.firestore {
              data.answers is list && data.comment is string && data.submitDate is timestamp;
     }
 
+    function isValidRawDataExport(data) {
+      return data.keys().hasAll(['source', 'timestamp', 'metrics']) &&
+             data.source is string && data.timestamp is string && data.metrics is map;
+    }
+
     // Rules
     match /users/{userId} {
       allow read: if isAuthenticated();
@@ -88,6 +93,12 @@ service cloud.firestore {
     match /responses/{responseId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isValidResponse(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    match /raw_data_exports/{exportId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidRawDataExport(request.resource.data);
       allow update, delete: if isAdmin();
     }
 
