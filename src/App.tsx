@@ -202,6 +202,7 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
 };
 
 const AdminView = () => {
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'api' | 'rawdata'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -237,59 +238,117 @@ const AdminView = () => {
   if (loading) return <div className="p-8 text-center"><Loader2 className="animate-spin text-inera-primary-40 mx-auto" size={32} /></div>;
 
   return (
-    <div className="card p-6 shadow-md border-inera-secondary-90">
-      <h2 className="text-xl font-bold font-display text-inera-neutral-10 mb-4">Administratör - Användare</h2>
-      {error && <div className="text-inera-error-40 mb-4 bg-inera-error-95 border-inera-error-40 border p-4 rounded-lg">{error}</div>}
-      
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse min-w-[600px]">
-          <thead>
-            <tr className="border-b border-inera-secondary-90 text-sm text-inera-neutral-40">
-              <th className="pb-2 font-bold px-2">Namn</th>
-              <th className="pb-2 font-bold px-2">E-post</th>
-              <th className="pb-2 font-bold px-2">Senast inloggad</th>
-              <th className="pb-2 font-bold px-2">Status</th>
-              <th className="pb-2 font-bold px-2">Åtgärd</th>
-            </tr>
-          </thead>
-          <motion.tbody layout>
-            <AnimatePresence mode="popLayout">
-            {users.map((u) => (
-              <motion.tr 
-                key={u.id} 
-                layout
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="border-b border-inera-secondary-95 last:border-0 hover:bg-inera-secondary-95/50"
-              >
-                <td className="py-3 px-2 text-sm text-inera-neutral-10 font-medium">{u.displayName || 'Okänd'}</td>
-                <td className="py-3 px-2 text-sm text-inera-neutral-20">{u.email}</td>
-                <td className="py-3 px-2 text-sm text-inera-neutral-20">
-                  {u.lastLoggedIn ? format(u.lastLoggedIn.toDate ? u.lastLoggedIn.toDate() : new Date(u.lastLoggedIn.seconds * 1000), 'yyyy-MM-dd HH:mm') : 'Aldrig'}
-                </td>
-                <td className="py-3 px-2 text-sm">
-                  {u.isBlocked ? (
-                    <span className="bg-inera-error-95 text-inera-error-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-error-40">Blockerad</span>
-                  ) : (
-                    <span className="bg-inera-success-95 text-inera-success-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-success-40">Aktiv</span>
-                  )}
-                </td>
-                <td className="py-3 px-2">
-                  <button 
-                    onClick={() => toggleBlock(u.id, !!u.isBlocked)}
-                    className={cn("btn btn--s", u.isBlocked ? "btn--secondary" : "btn--destructive")}
-                  >
-                    {u.isBlocked ? 'Avblockera' : 'Blockera'}
-                  </button>
-                </td>
-              </motion.tr>
-            ))}
-            </AnimatePresence>
-          </motion.tbody>
-        </table>
+    <div className="space-y-6">
+      <div className="flex gap-6 border-b border-inera-secondary-90">
+        <button 
+          className={cn("text-sm font-bold pb-3 border-b-2 transition-colors", activeAdminTab === 'users' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+          onClick={() => setActiveAdminTab('users')}
+        >
+          Användare
+        </button>
+        <button 
+          className={cn("text-sm font-bold pb-3 border-b-2 transition-colors", activeAdminTab === 'api' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+          onClick={() => setActiveAdminTab('api')}
+        >
+          API-inställningar
+        </button>
+        <button 
+          className={cn("text-sm font-bold pb-3 border-b-2 transition-colors", activeAdminTab === 'rawdata' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+          onClick={() => setActiveAdminTab('rawdata')}
+        >
+          Rådata Export
+        </button>
       </div>
+
+      <AnimatePresence mode="wait">
+        {activeAdminTab === 'users' && (
+          <motion.div
+            key="users"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+            className="card p-6 shadow-md border-inera-secondary-90 bg-white"
+          >
+            <h2 className="text-xl font-bold font-display text-inera-neutral-10 mb-4">Användarhantering</h2>
+            {error && <div className="text-inera-error-40 mb-4 bg-inera-error-95 border-inera-error-40 border p-4 rounded-lg">{error}</div>}
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[600px]">
+                <thead>
+                  <tr className="border-b border-inera-secondary-90 text-sm text-inera-neutral-40">
+                    <th className="pb-2 font-bold px-2">Namn</th>
+                    <th className="pb-2 font-bold px-2">E-post</th>
+                    <th className="pb-2 font-bold px-2">Senast inloggad</th>
+                    <th className="pb-2 font-bold px-2">Status</th>
+                    <th className="pb-2 font-bold px-2">Åtgärd</th>
+                  </tr>
+                </thead>
+                <motion.tbody layout>
+                  <AnimatePresence mode="popLayout">
+                  {users.map((u) => (
+                    <motion.tr 
+                      key={u.id} 
+                      layout
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="border-b border-inera-secondary-95 last:border-0 hover:bg-inera-secondary-95/50"
+                    >
+                      <td className="py-3 px-2 text-sm text-inera-neutral-10 font-medium">{u.displayName || 'Okänd'}</td>
+                      <td className="py-3 px-2 text-sm text-inera-neutral-20">{u.email}</td>
+                      <td className="py-3 px-2 text-sm text-inera-neutral-20">
+                        {u.lastLoggedIn ? format(u.lastLoggedIn.toDate ? u.lastLoggedIn.toDate() : new Date(u.lastLoggedIn.seconds * 1000), 'yyyy-MM-dd HH:mm') : 'Aldrig'}
+                      </td>
+                      <td className="py-3 px-2 text-sm">
+                        {u.isBlocked ? (
+                          <span className="bg-inera-error-95 text-inera-error-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-error-40">Blockerad</span>
+                        ) : (
+                          <span className="bg-inera-success-95 text-inera-success-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-success-40">Aktiv</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-2">
+                        <button 
+                          onClick={() => toggleBlock(u.id, !!u.isBlocked)}
+                          className={cn("btn btn--s", u.isBlocked ? "btn--secondary" : "btn--destructive")}
+                        >
+                          {u.isBlocked ? 'Avblockera' : 'Blockera'}
+                        </button>
+                      </td>
+                    </motion.tr>
+                  ))}
+                  </AnimatePresence>
+                </motion.tbody>
+              </table>
+            </div>
+          </motion.div>
+        )}
+        
+        {activeAdminTab === 'api' && (
+          <motion.div
+            key="api"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ApiView />
+          </motion.div>
+        )}
+        
+        {activeAdminTab === 'rawdata' && (
+          <motion.div
+            key="rawdata"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            <RawDataView />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -790,24 +849,12 @@ export default function App() {
             />
             {user.email && ADMIN_EMAILS.includes(user.email) && (
               <SidebarItem 
-                icon={Users} 
-                label="Administratör" 
+                icon={Settings} 
+                label="Administration" 
                 active={activeTab === 'admin'} 
                 onClick={() => setActiveTab('admin')} 
               />
             )}
-            <SidebarItem 
-              icon={Database} 
-              label="API-inställningar" 
-              active={activeTab === 'api'} 
-              onClick={() => setActiveTab('api')} 
-            />
-            <SidebarItem 
-              icon={Database} 
-              label="Rådata" 
-              active={activeTab === 'rawdata'} 
-              onClick={() => setActiveTab('rawdata')} 
-            />
           </nav>
 
           <div className="pt-4 border-t border-inera-secondary-90 space-y-2">
@@ -1569,26 +1616,6 @@ export default function App() {
                 transition={{ duration: 0.2, ease: "easeOut" }}
               >
                 <AdminView />
-              </motion.div>
-            ) : activeTab === 'api' ? (
-              <motion.div
-                key="api"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-              >
-                <ApiView />
-              </motion.div>
-            ) : activeTab === 'rawdata' ? (
-              <motion.div
-                key="rawdata"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-              >
-                <RawDataView />
               </motion.div>
             ) : null}
             </AnimatePresence>

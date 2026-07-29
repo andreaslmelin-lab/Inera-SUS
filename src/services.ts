@@ -1,3 +1,4 @@
+import { triggerSusMetricsSync } from './services/syncService';
 import { 
   collection, 
   doc, 
@@ -337,6 +338,7 @@ export const MeasurementService = {
             }
 
             await batch.commit();
+            triggerSusMetricsSync().catch(err => console.error("Sync error:", err));
             resolve();
           } catch (err) {
             reject(err);
