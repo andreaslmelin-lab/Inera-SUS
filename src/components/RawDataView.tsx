@@ -167,7 +167,7 @@ const RawDataView = () => {
             >
                 <Send size={18} /> {syncing ? 'Synkar...' : 'Synka nu till Dashboard'}
             </button>
-            <button onClick={handleDownload} className="flex items-center gap-2 px-4 py-2 bg-accent-40 text-white rounded-lg hover:bg-accent-30 transition-colors shadow-md font-semibold">
+            <button onClick={handleDownload} className="btn btn--m btn--primary font-semibold shadow-sm">
                 <Download size={18} /> Ladda ner JSON-fil
             </button>
         </div>

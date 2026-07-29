@@ -64,10 +64,10 @@ const ApiView = () => {
         <p className="text-sm text-inera-neutral-40 mb-4">Välj en Presets-källa nedan, redigera JSON-kroppen direkt och skicka iväg anropet för att uppdatera databasen i realtid!</p>
         
         <div className="flex gap-2 mb-4">
-            <button className="text-sm px-3 py-1 bg-inera-secondary-95 rounded-full hover:bg-inera-secondary-90">UX-Mognad Presets</button>
-            <button className="text-sm px-3 py-1 bg-inera-secondary-95 rounded-full hover:bg-inera-secondary-90">Inera Kunskap Presets</button>
-            <button className="text-sm px-3 py-1 bg-primary-40 text-white rounded-full">Inera SUS Presets</button>
-            <button className="text-sm px-3 py-1 bg-inera-secondary-95 rounded-full hover:bg-inera-secondary-90">Tillgänglighet Presets</button>
+            <button className="text-sm px-3 py-1 bg-inera-secondary-95 rounded-full hover:bg-inera-secondary-90 text-inera-neutral-20">UX-Mognad Presets</button>
+            <button className="text-sm px-3 py-1 bg-inera-secondary-95 rounded-full hover:bg-inera-secondary-90 text-inera-neutral-20">Inera Kunskap Presets</button>
+            <button className="text-sm px-3 py-1 bg-inera-primary-40 text-white rounded-full font-semibold">Inera SUS Presets</button>
+            <button className="text-sm px-3 py-1 bg-inera-secondary-95 rounded-full hover:bg-inera-secondary-90 text-inera-neutral-20">Tillgänglighet Presets</button>
         </div>
 
         <textarea 
@@ -76,7 +76,7 @@ const ApiView = () => {
           className="w-full h-48 p-4 bg-inera-neutral-10 text-white font-mono text-sm rounded-lg mb-4"
         />
 
-        <button onClick={handleTestApi} className="flex items-center gap-2 px-4 py-2 bg-accent-40 text-white rounded-lg hover:bg-accent-30">
+        <button onClick={handleTestApi} className="btn btn--m btn--primary">
           <Send size={16} /> Skicka API-anrop
         </button>
 

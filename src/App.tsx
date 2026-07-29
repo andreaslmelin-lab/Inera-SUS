@@ -18,6 +18,7 @@ import { doc, getDoc, setDoc, updateDoc, collection, getDocs, serverTimestamp } 
 import { motion, AnimatePresence } from 'motion/react';
 import ApiView from './components/ApiView';
 import RawDataView from './components/RawDataView';
+import ineraLogo from './Images/Inera logo 1.0 färg.svg';
 
 const ADMIN_EMAILS = ['andreas.melin@inera.se', 'andreas.melin@inera', 'andreas.l.melin@gmail.com'];
 
@@ -28,22 +29,9 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState(initialError);
   const [message, setMessage] = useState('');
-
-  const handleGoogleLogin = async () => {
-    try {
-      setError('');
-      setMessage('');
-      await signInWithPopup(auth, googleProvider);
-    } catch (err: any) {
-      if (err.code === 'auth/unauthorized-domain') {
-        setError('Domänen är inte auktoriserad för Google-inloggning. Vänligen lägg till domänen i Firebase Console > Authentication > Settings > Authorized domains. Eller använd e-post och lösenord.');
-      } else {
-        setError(err.message || 'Ett fel uppstod vid inloggning.');
-      }
-    }
-  };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,6 +52,15 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
       }
 
       if (isRegistering) {
+        if (!inviteCode.trim()) {
+          setError('Det var en felaktig inbjudningskod, kontakta ux@inera.se för korrekt kod.');
+          return;
+        }
+        const cleanCode = inviteCode.trim().toLowerCase();
+        if (cleanCode !== 'ineraux' && cleanCode !== 'ineraux2026') {
+          setError('Det var en felaktig inbjudningskod, kontakta ux@inera.se för korrekt kod.');
+          return;
+        }
         if (!email.toLowerCase().endsWith('@inera.se')) {
           setError('Bara e-postadresser från inera.se är tillåtna.');
           return;
@@ -92,16 +89,18 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
   };
 
   return (
-    <div className="h-screen w-full flex flex-col items-center justify-center bg-inera-secondary-95 p-4">
-      <div className="card p-8 shadow-xl max-w-md w-full text-center border-inera-secondary-90">
-        <div className="bg-inera-primary-40 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-inera-primary-70">
-          <Database className="text-white" size={32} />
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-inera-secondary-95 p-4">
+      <div className="card p-8 shadow-xl max-w-md w-full text-center border-inera-secondary-90 bg-white">
+        <div className="flex justify-center mb-6">
+          <img src={ineraLogo} alt="Inera Logotyp" className="h-12 w-auto" />
         </div>
-        <h1 className="text-3xl font-bold text-inera-neutral-10 mb-2">Inera SUS Tracker</h1>
-        <p className="text-inera-neutral-40 mb-8">
+        <h1 className="text-2xl font-bold font-display text-inera-primary-40 mb-1">Inera SUS Analys</h1>
+        <p className="text-sm text-inera-neutral-40 mb-8">
           {isForgotPassword 
             ? 'Återställ ditt lösenord' 
-            : 'Logga in för att hantera och visualisera SUS-mätningar för Ineras produkter.'}
+            : isRegistering 
+              ? 'Skapa ett konto med din Inera-adress och inbjudningskod' 
+              : 'Logga in för att hantera och visualisera SUS-mätningar för Ineras produkter.'}
         </p>
 
         {error && (
@@ -119,6 +118,21 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
         )}
 
         <form onSubmit={handleEmailAuth} className="space-y-4 text-left mb-4">
+          {isRegistering && (
+            <div>
+              <label className="block text-sm font-bold text-inera-neutral-20 mb-1">
+                Inbjudningskod <span className="text-inera-error-40">*</span>
+              </label>
+              <input 
+                type="password" 
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value)}
+                className="input w-full font-mono text-sm"
+                placeholder="Inbjudningskod"
+                required
+              />
+            </div>
+          )}
           <div>
             <label className="block text-sm font-bold text-inera-neutral-20 mb-1">E-post</label>
             <input 
@@ -138,7 +152,7 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
                   <button 
                     type="button"
                     onClick={() => { setIsForgotPassword(true); setError(''); setMessage(''); }}
-                    className="text-xs text-inera-primary-40 hover:underline"
+                    className="text-xs text-inera-primary-40 hover:underline font-semibold"
                   >
                     Glömt lösenordet?
                   </button>
@@ -156,9 +170,10 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
           )}
           <button
             type="submit"
-            className="w-full btn btn--l btn--primary"
+            disabled={isRegistering && !inviteCode.trim()}
+            className="w-full btn btn--l btn--primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isForgotPassword ? 'Återställ lösenord' : (isRegistering ? 'Skapa konto' : 'Logga in')}
+            {isForgotPassword ? 'Återställ lösenord' : (isRegistering ? 'Registrera' : 'Logga in')}
           </button>
         </form>
 
@@ -171,30 +186,13 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
             Tillbaka till inloggning
           </button>
         ) : (
-          <>
-            <div className="flex items-center gap-4 mb-6 mt-6">
-              <div className="h-px bg-inera-secondary-90 flex-1"></div>
-              <span className="text-xs text-inera-neutral-40 font-bold uppercase tracking-wider">Eller</span>
-              <div className="h-px bg-inera-secondary-90 flex-1"></div>
-            </div>
-
-            <button
-              onClick={handleGoogleLogin}
-              type="button"
-              className="w-full btn btn--l btn--secondary border-inera-neutral-70 shadow-sm mb-6"
-            >
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" />
-              Logga in med Google
-            </button>
-
-            <button 
-              onClick={() => { setIsRegistering(!isRegistering); setError(''); setMessage(''); }}
-              type="button"
-              className="text-sm text-inera-primary-40 hover:underline font-bold"
-            >
-              {isRegistering ? 'Har du redan ett konto? Logga in.' : 'Inget konto? Skapa ett här.'}
-            </button>
-          </>
+          <button 
+            onClick={() => { setIsRegistering(!isRegistering); setError(''); setMessage(''); }}
+            type="button"
+            className="text-sm text-inera-primary-40 hover:underline font-bold mt-4 block mx-auto"
+          >
+            {isRegistering ? 'Har du redan ett konto? Logga in.' : 'Inget konto? Skapa ett här.'}
+          </button>
         )}
       </div>
     </div>
@@ -357,13 +355,13 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
   <button
     onClick={onClick}
     className={cn(
-      "w-full flex items-center gap-3 px-4 py-2.5 rounded text-sm font-semibold transition-colors duration-150 border",
+      "w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm font-bold transition-all duration-150 border",
       active 
-        ? "bg-white text-inera-primary-40 border-inera-secondary-90 shadow-sm" 
-        : "text-inera-primary-30 border-transparent hover:bg-inera-secondary-90"
+        ? "bg-white text-inera-primary-40 border-inera-secondary-90 shadow-xs border-l-4 border-l-inera-primary-40" 
+        : "text-[#383d42] border-transparent hover:bg-inera-secondary-90 hover:text-inera-neutral-10"
     )}
   >
-    <Icon size={18} />
+    <Icon size={18} className={active ? "text-inera-primary-40" : "text-[#383d42]"} />
     <span>{label}</span>
   </button>
 );
@@ -807,23 +805,22 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white pb-12">
       {/* Header */}
-      <header className="bg-inera-primary-30 text-white px-6 py-8 border-b-4 border-inera-secondary-40 shadow-md">
+      <header className="bg-white border-t-4 border-inera-primary-40 border-b border-inera-secondary-90 px-6 py-4 shadow-xs sticky top-0 z-40">
         <div className="max-w-[80rem] mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="bg-white/20 p-3 rounded-lg backdrop-blur-sm border border-white/20">
-              <Database className="text-white" size={24} />
-            </div>
+            <img src={ineraLogo} alt="Inera Logo" className="h-9 w-auto" />
+            <div className="h-6 w-px bg-inera-neutral-90 hidden sm:block" />
             <div>
-              <h1 className="text-2xl font-bold font-display leading-tight text-white">Inera SUS Analys</h1>
-              <p className="text-white/90 text-sm mt-1">Hantera och visualisera mätningar per produkt och variant</p>
+              <h1 className="text-xl font-bold font-display leading-tight text-inera-primary-40">Inera SUS Analys</h1>
+              <p className="text-xs text-inera-neutral-40 font-medium hidden sm:block">Användbarhet & System Usability Scale Tracker</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
              <div className="text-right hidden sm:block">
-               <p className="text-sm font-bold text-white leading-none mb-1">{user.displayName || user.email?.split('@')[0]}</p>
-               <p className="text-[10px] text-white/80">{user.email}</p>
+               <p className="text-sm font-bold text-inera-neutral-20 leading-none mb-1">{user.displayName || user.email?.split('@')[0]}</p>
+               <p className="text-[11px] text-inera-neutral-40 font-mono">{user.email}</p>
              </div>
-             <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email?.split('@')[0] || 'User'}&background=A33662&color=fff`} alt="" className="w-10 h-10 rounded-full border-2 border-inera-secondary-40 shadow-sm" />
+             <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email?.split('@')[0] || 'User'}&background=A33662&color=fff`} alt="" className="w-9 h-9 rounded-full border border-inera-secondary-90 shadow-xs" />
           </div>
         </div>
       </header>
@@ -1748,6 +1745,22 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Footer */}
+      <footer className="mt-16 bg-[#f6f1e9] border-t border-inera-secondary-90 py-8 px-6 text-[#383d42]">
+        <div className="max-w-[80rem] mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-sm">
+          <div className="flex items-center gap-3">
+            <img src={ineraLogo} alt="Inera Logo" className="h-6 w-auto" />
+            <span className="text-inera-neutral-40 text-xs">|</span>
+            <span className="text-xs text-inera-neutral-40 font-medium">© {new Date().getFullYear()} Inera AB. Alla rättigheter förbehållna.</span>
+          </div>
+          <div className="flex items-center gap-6 text-xs font-semibold">
+            <a href="https://www.inera.se" target="_blank" rel="noopener noreferrer" className="text-inera-primary-40 hover:underline">Inera.se</a>
+            <a href="mailto:ux@inera.se" className="text-inera-primary-40 hover:underline">Kontakt: ux@inera.se</a>
+            <a href="https://inera-admin.se" target="_blank" rel="noopener noreferrer" className="text-inera-primary-40 hover:underline">Inera Admin Dashboard</a>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
