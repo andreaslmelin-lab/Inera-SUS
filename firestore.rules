@@ -66,6 +66,10 @@ service cloud.firestore {
     }
 
     // Rules
+    match /settings/{settingId} {
+      allow read, write: if isAdmin();
+    }
+
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());

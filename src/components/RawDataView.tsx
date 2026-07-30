@@ -6,6 +6,7 @@ import { getSusGrade, calculateMedian } from '../lib/utils';
 import { motion } from 'motion/react';
 import { Download, Code2, Link, Copy, Send, CheckCircle, AlertCircle } from 'lucide-react';
 import { triggerSusMetricsSync, pushMetricsToAdminDashboard } from '../services/syncService';
+import { loadProductMappings } from '../services/catalogMappingService';
 
 const RawDataView = () => {
   const [exportPayload, setExportPayload] = useState<any>(null);
@@ -36,15 +37,18 @@ const RawDataView = () => {
         });
         const overallScore = responses.length > 0 ? Math.round(totalScoreSum / responses.length) : 0;
 
-        // Group responses by variantName to get scores for each "Produkt" (formerly variant)
+        const mappings = await loadProductMappings();
+
+        // Group responses by variantName mapped to official master catalog product names
         const variantMetricsMap: Record<string, { totalScore: number; count: number }> = {};
         responses.forEach(r => {
-          const name = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Övriga' : r.variantName;
-          if (!variantMetricsMap[name]) {
-            variantMetricsMap[name] = { totalScore: 0, count: 0 };
+          const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Övriga' : (r.variantName || 'Övriga');
+          const mappedName = mappings[rawName] || rawName;
+          if (!variantMetricsMap[mappedName]) {
+            variantMetricsMap[mappedName] = { totalScore: 0, count: 0 };
           }
-          variantMetricsMap[name].totalScore += r.susScore;
-          variantMetricsMap[name].count++;
+          variantMetricsMap[mappedName].totalScore += r.susScore;
+          variantMetricsMap[mappedName].count++;
         });
 
         const productMetrics = Object.entries(variantMetricsMap).map(([name, data]) => ({
@@ -69,11 +73,13 @@ const RawDataView = () => {
         });
 
         const events = responses.map(r => {
+           const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Övriga' : (r.variantName || 'Övriga');
            return {
              eventId: r.id,
              timestamp: r.submitDate ? (r.submitDate as any).toDate().toISOString() : new Date().toISOString(),
              eventType: "SUS_SURVEY_COMPLETED",
              targetServiceId: r.productId,
+             productName: mappings[rawName] || rawName,
              scoreGiven: r.susScore
            };
         });

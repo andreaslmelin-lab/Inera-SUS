@@ -6,7 +6,8 @@ async function startServer() {
   const expressApp = express();
   const PORT = 3000;
 
-  expressApp.use(express.json());
+  expressApp.use(express.json({ limit: "50mb" }));
+  expressApp.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // Proxy API route to avoid CORS and secure tokens server-side
   expressApp.post("/api/sync-metrics", async (req, res) => {

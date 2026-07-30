@@ -19,6 +19,7 @@ import { doc, getDoc, setDoc, updateDoc, collection, getDocs, serverTimestamp } 
 import { motion, AnimatePresence } from 'motion/react';
 import ApiView from './components/ApiView';
 import RawDataView from './components/RawDataView';
+import CatalogMappingView from './components/CatalogMappingView';
 import ineraLogo from './Images/Inera logo 1.0 färg.svg';
 
 const ADMIN_EMAILS = ['andreas.melin@inera.se', 'andreas.melin@inera', 'andreas.l.melin@gmail.com'];
@@ -201,7 +202,7 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
 };
 
 const AdminView = () => {
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'api' | 'rawdata'>('users');
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'api' | 'rawdata' | 'catalog'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -256,6 +257,12 @@ const AdminView = () => {
           onClick={() => setActiveAdminTab('rawdata')}
         >
           Rådata Export
+        </button>
+        <button 
+          className={cn("text-sm font-bold pb-3 border-b-2 transition-colors", activeAdminTab === 'catalog' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+          onClick={() => setActiveAdminTab('catalog')}
+        >
+          Produktkatalog & Mappning
         </button>
       </div>
 
@@ -345,6 +352,18 @@ const AdminView = () => {
             transition={{ duration: 0.2 }}
           >
             <RawDataView />
+          </motion.div>
+        )}
+
+        {activeAdminTab === 'catalog' && (
+          <motion.div
+            key="catalog"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            <CatalogMappingView />
           </motion.div>
         )}
       </AnimatePresence>
