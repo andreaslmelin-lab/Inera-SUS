@@ -7,7 +7,8 @@ import {
   Upload, LayoutDashboard, Database, LogOut, ChevronRight, 
   TrendingUp, Users, MessageSquare, Filter, FileSpreadsheet,
   AlertCircle, CheckCircle2, Loader2, Search, ArrowLeft,
-  Info, Calendar, ArrowUpRight, ArrowDownRight, Trash2, Settings
+  Info, Calendar, ArrowUpRight, ArrowDownRight, Trash2, Settings,
+  User as LucideUser
 } from 'lucide-react';
 import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from './firebase';
 import { Product, ProductService, Measurement, MeasurementService, ResponseData, Variant } from './services';
@@ -100,7 +101,7 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
             ? 'Återställ ditt lösenord' 
             : isRegistering 
               ? 'Skapa ett konto med din Inera-adress och inbjudningskod' 
-              : 'Logga in för att hantera och visualisera SUS-mätningar för Ineras produkter.'}
+              : 'Logga in för att hantera och visualisera SUS-mätningar för Ineras tjänster.'}
         </p>
 
         {error && (
@@ -790,6 +791,27 @@ export default function App() {
     return ['Alla', ...Array.from(cats)];
   }, [products]);
 
+  const userNames = useMemo(() => {
+    if (!user) return { firstName: 'Användare', lastName: '' };
+    if (user.displayName) {
+      const parts = user.displayName.trim().split(' ');
+      return {
+        firstName: parts[0],
+        lastName: parts.slice(1).join(' ')
+      };
+    }
+    if (user.email) {
+      const prefix = user.email.split('@')[0];
+      const parts = prefix.split('.');
+      const capitalize = (s: string) => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+      return {
+        firstName: capitalize(parts[0]),
+        lastName: capitalize(parts[1] || '')
+      };
+    }
+    return { firstName: 'Användare', lastName: '' };
+  }, [user]);
+
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-inera-secondary-95">
@@ -805,22 +827,43 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white pb-12">
       {/* Header */}
-      <header className="bg-white border-t-4 border-inera-primary-40 border-b border-inera-secondary-90 px-6 py-4 shadow-xs sticky top-0 z-40">
+      <header className="bg-white border-b border-inera-secondary-90 px-6 py-3 sticky top-0 z-40 shadow-2xs">
         <div className="max-w-[80rem] mx-auto flex items-center justify-between">
+          {/* Logo & Title */}
           <div className="flex items-center gap-4">
-            <img src={ineraLogo} alt="Inera Logo" className="h-9 w-auto" />
-            <div className="h-6 w-px bg-inera-neutral-90 hidden sm:block" />
-            <div>
-              <h1 className="text-xl font-bold font-display leading-tight text-inera-primary-40">Inera SUS Analys</h1>
-              <p className="text-xs text-inera-neutral-40 font-medium hidden sm:block">Användbarhet & System Usability Scale Tracker</p>
+            <img src={ineraLogo} alt="Inera Logo" className="h-8 w-auto" />
+            <div className="h-7 w-px bg-inera-secondary-90" />
+            <div className="flex flex-col text-inera-primary-40 font-semibold text-sm leading-tight font-display">
+              <span>SUS Analys</span>
+              <span>UX</span>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-             <div className="text-right hidden sm:block">
-               <p className="text-sm font-bold text-inera-neutral-20 leading-none mb-1">{user.displayName || user.email?.split('@')[0]}</p>
-               <p className="text-[11px] text-inera-neutral-40 font-mono">{user.email}</p>
-             </div>
-             <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName || user.email?.split('@')[0] || 'User'}&background=A33662&color=fff`} alt="" className="w-9 h-9 rounded-full border border-inera-secondary-90 shadow-xs" />
+
+          {/* User Badge & Logout */}
+          <div className="flex items-center gap-5">
+            {/* User Pill */}
+            <div className="flex items-center gap-2.5 px-3 py-1.5 bg-[#fbf9f7] border border-inera-secondary-90 rounded-lg shadow-2xs">
+              <div className="w-7 h-7 rounded-full bg-white border border-inera-secondary-90 flex items-center justify-center text-inera-accent-40">
+                <LucideUser size={16} className="text-inera-accent-40" />
+              </div>
+              <div className="text-left text-xs font-bold text-inera-neutral-20 leading-tight">
+                <div>{userNames.firstName}</div>
+                {userNames.lastName ? <div>{userNames.lastName}</div> : null}
+              </div>
+            </div>
+
+            {/* Logout Link */}
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 text-inera-primary-40 hover:text-inera-primary-30 transition-colors py-1 px-1.5 rounded hover:bg-inera-primary-95"
+              title="Logga ut"
+            >
+              <LogOut size={18} />
+              <div className="flex flex-col text-left leading-tight text-[11px] font-semibold">
+                <span>Logga</span>
+                <span>ut</span>
+              </div>
+            </button>
           </div>
         </div>
       </header>
@@ -885,12 +928,12 @@ export default function App() {
                     Dashboard & Insikter
                   </h2>
                   <p className="text-xs text-inera-neutral-40 mt-1 uppercase tracking-wider font-semibold">
-                    {view === 'company' ? 'Aggregerad vy för Inera' : `Analys för: ${products.find(p => p.id === selectedProductId)?.name || 'Vald produkt'}`}
+                    {view === 'company' ? 'Aggregerad vy för Inera' : `Analys för: ${products.find(p => p.id === selectedProductId)?.name || 'Vald tjänst'}`}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-inera-secondary-90">
                   <div className="flex flex-col gap-1 px-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Filter: Produkt</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Filter: Tjänst</label>
                     <select 
                       value={view === 'company' ? 'Alla' : selectedProductId || 'Alla'}
                       onChange={(e) => {
@@ -907,7 +950,7 @@ export default function App() {
                       }}
                       className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
                     >
-                      <option value="Alla">Alla produkter avg.</option>
+                      <option value="Alla">Alla tjänster avg.</option>
                       {products.map(p => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
@@ -940,13 +983,13 @@ export default function App() {
                     <>
                       <div className="hidden sm:block w-px h-10 bg-inera-secondary-90" />
                       <div className="flex flex-col gap-1 px-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Välj Variant</label>
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Välj Produkt</label>
                         <select 
                           value={selectedVariant}
                           onChange={(e) => setSelectedVariant(e.target.value)}
                           className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
                         >
-                          <option value="Alla">Hela produkten (Allt)</option>
+                          <option value="Alla">Hela tjänsten (Allt)</option>
                           {variants.map(v => (
                             <option key={v.id} value={v.name}>{v.name}</option>
                           ))}
@@ -975,7 +1018,7 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <StatCard 
                       icon={Database} 
-                      label="Produkter" 
+                      label="Tjänster" 
                       value={products.length} 
                       subValue="Aktiva i katalogen"
                       color="bg-inera-primary-40" 
@@ -1000,7 +1043,7 @@ export default function App() {
 
                   <div className="card p-0 shadow-sm overflow-hidden border-inera-secondary-90">
                     <div className="p-6 border-b border-inera-secondary-90 flex items-center justify-between">
-                      <h3 className="text-lg font-bold text-inera-neutral-10">Produktkatalog</h3>
+                      <h3 className="text-lg font-bold text-inera-neutral-10">Tjänstekatalog</h3>
                       <div className="text-xs text-inera-neutral-40 font-medium uppercase tracking-wider">
                         Visar {filteredProducts.length} av {products.length}
                       </div>
@@ -1124,7 +1167,7 @@ export default function App() {
                       </AnimatePresence>
                       {filteredProducts.length === 0 && (
                         <div className="py-12 text-center text-inera-neutral-40">
-                          Inga produkter hittades.
+                          Inga tjänster hittades.
                         </div>
                       )}
                     </div>
@@ -1151,7 +1194,7 @@ export default function App() {
                     />
                     <StatCard 
                       icon={Filter} 
-                      label="Variant" 
+                      label="Produkt" 
                       value={selectedVariant} 
                       subValue={`${variants.length} tillgängliga`}
                       color="bg-inera-success-40" 
@@ -1171,7 +1214,7 @@ export default function App() {
                       <div className="flex items-center justify-between mb-6">
                         <h3 className="text-lg font-bold text-inera-neutral-10 flex items-center gap-2">
                           <Filter size={20} className="text-inera-success-40" />
-                          SUS per Variant (Senaste mätningen)
+                          SUS per Produkt (Senaste mätningen)
                         </h3>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-inera-neutral-40 uppercase">Sortera:</span>
@@ -1484,20 +1527,20 @@ export default function App() {
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-inera-neutral-10">Ladda upp mätning</h3>
-                    <p className="text-sm text-inera-neutral-40">Välj produkt och ladda upp CSV-fil.</p>
+                    <p className="text-sm text-inera-neutral-40">Välj tjänst och ladda upp CSV-fil.</p>
                   </div>
                 </div>
 
                 <div className="space-y-6">
                   <div className="space-y-2">
-                    <label className="label">Välj produkt</label>
+                    <label className="label">Välj tjänst</label>
                     <div className="flex gap-2">
                       <select 
                         value={uploadProductId}
                         onChange={(e) => setUploadProductId(e.target.value)}
                         className="select flex-1"
                       >
-                        <option value="">-- Välj befintlig produkt --</option>
+                        <option value="">-- Välj befintlig tjänst --</option>
                         {products.map(p => (
                           <option key={p.id} value={p.name}>{p.name}</option>
                         ))}
@@ -1505,13 +1548,13 @@ export default function App() {
                       <div className="flex items-center px-3 text-inera-neutral-60 font-bold">ELLER</div>
                       <input 
                         type="text" 
-                        placeholder="Ny produkt..." 
+                        placeholder="Ny tjänst..." 
                         value={uploadProductId}
                         onChange={(e) => setUploadProductId(e.target.value)}
                         className="input flex-1"
                       />
                     </div>
-                    <p className="text-[10px] text-inera-neutral-60 italic">Tips: Skriv namnet om produkten inte finns i listan.</p>
+                    <p className="text-[10px] text-inera-neutral-60 italic">Tips: Skriv namnet om tjänsten inte finns i listan.</p>
                   </div>
 
                   <div className="p-6 border-2 border-dashed border-inera-secondary-90 rounded-xl hover:border-inera-primary-60 transition-colors group relative">
@@ -1532,7 +1575,7 @@ export default function App() {
                         <>
                           <FileSpreadsheet className={cn("mx-auto mb-4 transition-colors", !uploadProductId ? "text-inera-neutral-90" : "text-inera-neutral-60 group-hover:text-inera-primary-40")} size={40} />
                           <p className={cn("text-sm font-bold", !uploadProductId ? "text-inera-neutral-60" : "text-inera-neutral-10")}>
-                            {!uploadProductId ? 'Välj produkt först' : 'Klicka eller dra hit CSV-fil'}
+                            {!uploadProductId ? 'Välj tjänst först' : 'Klicka eller dra hit CSV-fil'}
                           </p>
                           <p className="text-xs text-inera-neutral-40 mt-1">Stöd för Ineras standardexport</p>
                         </>
@@ -1559,8 +1602,8 @@ export default function App() {
                       <div className="alert-title">Instruktioner för filformat</div>
                       <ul className="text-xs space-y-1 list-disc pl-4 mt-2">
                         <li>Ladda upp rader direkt från exportfilen.</li>
-                        <li>Automatiskt filter: Rader med värdet 0 på frågan om användaren kommer ihåg produkten hoppas över.</li>
-                        <li>Automatiskt gruppering: Svar i "Other"-kolumnen slås ihop under varianten "Other".</li>
+                        <li>Automatiskt filter: Rader med värdet 0 på frågan om användaren kommer ihåg tjänsten hoppas över.</li>
+                        <li>Automatiskt gruppering: Svar i "Other"-kolumnen slås ihop under produkten "Other".</li>
                         <li>Statistik baseras på kolumnerna för SUS-frågor och kommentarer.</li>
                         <li>Trenden visas baserat på "Start Date (UTC)".</li>
                       </ul>

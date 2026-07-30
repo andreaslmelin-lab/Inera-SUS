@@ -29,40 +29,40 @@ const RawDataView = () => {
         let totalCount = 0;
         let responseRateAvg = 100;
 
-        const productMetrics = products.map(product => {
-          const prodMeasurements = measurements.filter(m => m.productId === product.id);
-          
-          let pTotalScore = 0;
-          let pCount = 0;
-          prodMeasurements.forEach(m => {
-             if (m.averageScore) {
-               pTotalScore += m.averageScore * m.responseCount;
-               pCount += m.responseCount;
-             }
-          });
-          const pScore = pCount > 0 ? Math.round(pTotalScore / pCount) : 0;
-          
-          if(pCount > 0) {
-            totalScore += pTotalScore;
-            totalCount += pCount;
-          }
+        // Calculate overall score from responses
+        let totalScoreSum = 0;
+        responses.forEach(r => {
+          totalScoreSum += r.susScore;
+        });
+        const overallScore = responses.length > 0 ? Math.round(totalScoreSum / responses.length) : 0;
 
-          return {
-            name: product.name,
-            score: pScore,
-            responses: pCount
-          };
+        // Group responses by variantName to get scores for each "Produkt" (formerly variant)
+        const variantMetricsMap: Record<string, { totalScore: number; count: number }> = {};
+        responses.forEach(r => {
+          const name = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Övriga' : r.variantName;
+          if (!variantMetricsMap[name]) {
+            variantMetricsMap[name] = { totalScore: 0, count: 0 };
+          }
+          variantMetricsMap[name].totalScore += r.susScore;
+          variantMetricsMap[name].count++;
         });
 
-        const overallScore = totalCount > 0 ? Math.round(totalScore / totalCount) : 0;
-        
+        const productMetrics = Object.entries(variantMetricsMap).map(([name, data]) => ({
+          name,
+          score: data.count > 0 ? Math.round(data.totalScore / data.count) : 0,
+          responses: data.count
+        }));
+
+        // Services (formerly products)
         const services = products.map(product => {
-           const pMetrics = productMetrics.find(p => p.name === product.name);
+           const prodResponses = responses.filter(r => r.productId === product.id);
+           const serviceTotalScore = prodResponses.reduce((sum, r) => sum + r.susScore, 0);
+           const serviceCount = prodResponses.length;
            return {
              serviceId: product.id,
              serviceName: product.name,
-             susScore: pMetrics?.score || 0,
-             responsesCount: pMetrics?.responses || 0,
+             susScore: serviceCount > 0 ? Math.round(serviceTotalScore / serviceCount) : 0,
+             responsesCount: serviceCount,
              wcagPassRate: null,
              criticalWcagErrors: null
            };
@@ -88,7 +88,7 @@ const RawDataView = () => {
             "grade": getSusGrade(overallScore),
             "evaluationsCount": measurements.length,
             "responseRate": responseRateAvg,
-            "productsCount": products.length,
+            "productsCount": productMetrics.length,
             "products": productMetrics
           },
           "granularData": {

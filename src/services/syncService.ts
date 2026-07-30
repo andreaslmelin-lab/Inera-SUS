@@ -3,9 +3,6 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getSusGrade } from '../lib/utils';
 
-const INERA_ADMIN_SYNC_URL = "https://ais-dev-lvmun5ushirn36utur7hyn-168492443119.europe-west1.run.app/api/sync-metrics";
-const API_TOKEN = "inera_ux_token_9e48bcf0";
-
 export async function pushMetricsToAdminDashboard(payload: {
   source: "ux-mognad" | "inera-kunskap" | "inera-sus" | "tillg-nglighetsranking";
   metrics: Record<string, any>;
@@ -17,11 +14,10 @@ export async function pushMetricsToAdminDashboard(payload: {
   };
 }) {
   try {
-    const response = await fetch(INERA_ADMIN_SYNC_URL, {
+    const response = await fetch("/api/sync-metrics", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-token": API_TOKEN,
       },
       body: JSON.stringify({
         source: payload.source,
@@ -57,40 +53,40 @@ export async function triggerSusMetricsSync() {
     const responsesSnap = await getDocs(collection(db, 'responses'));
     const responses = responsesSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
 
-    let totalScore = 0;
-    let totalCount = 0;
+    // Calculate total scores from all responses
+    let totalScoreSum = 0;
+    responses.forEach(r => {
+      totalScoreSum += r.susScore;
+    });
+    const overallScore = responses.length > 0 ? Math.round(totalScoreSum / responses.length) : 0;
 
-    const productMetrics = products.map(product => {
-      const prodMeasurements = measurements.filter(m => m.productId === product.id);
-      let pTotalScore = 0;
-      let pCount = 0;
-      prodMeasurements.forEach(m => {
-        if (m.averageScore) {
-          pTotalScore += m.averageScore * m.responseCount;
-          pCount += m.responseCount;
-        }
-      });
-      const pScore = pCount > 0 ? Math.round(pTotalScore / pCount) : 0;
-      if (pCount > 0) {
-        totalScore += pTotalScore;
-        totalCount += pCount;
+    // Group responses by variantName to get scores for each "Produkt" (formerly variant)
+    const variantMetricsMap: Record<string, { totalScore: number; count: number }> = {};
+    responses.forEach(r => {
+      const name = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Övriga' : r.variantName;
+      if (!variantMetricsMap[name]) {
+        variantMetricsMap[name] = { totalScore: 0, count: 0 };
       }
-      return {
-        name: product.name,
-        score: pScore,
-        responses: pCount
-      };
+      variantMetricsMap[name].totalScore += r.susScore;
+      variantMetricsMap[name].count++;
     });
 
-    const overallScore = totalCount > 0 ? Math.round(totalScore / totalCount) : 0;
+    const productMetrics = Object.entries(variantMetricsMap).map(([name, data]) => ({
+      name,
+      score: data.count > 0 ? Math.round(data.totalScore / data.count) : 0,
+      responses: data.count
+    }));
 
+    // Services (formerly products)
     const services = products.map(product => {
-      const pMetrics = productMetrics.find(p => p.name === product.name);
+      const prodResponses = responses.filter(r => r.productId === product.id);
+      const serviceTotalScore = prodResponses.reduce((sum, r) => sum + r.susScore, 0);
+      const serviceCount = prodResponses.length;
       return {
         serviceId: product.id,
         serviceName: product.name,
-        susScore: pMetrics?.score || 0,
-        responsesCount: pMetrics?.responses || 0,
+        susScore: serviceCount > 0 ? Math.round(serviceTotalScore / serviceCount) : 0,
+        responsesCount: serviceCount,
         wcagPassRate: null,
         criticalWcagErrors: null
       };
@@ -113,7 +109,7 @@ export async function triggerSusMetricsSync() {
         grade: getSusGrade(overallScore),
         evaluationsCount: measurements.length,
         responseRate: 100,
-        productsCount: products.length,
+        productsCount: productMetrics.length,
         products: productMetrics
       },
       granularData: {
