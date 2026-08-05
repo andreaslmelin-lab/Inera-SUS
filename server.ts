@@ -13,9 +13,9 @@ async function startServer() {
   expressApp.post("/api/sync-metrics", async (req, res) => {
     try {
       const payload = req.body;
-      const apiToken = "inera_ux_token_9e48bcf0"; // Kept secure on the server
+      const apiToken = "inera_ux_token_11am0nao"; // Kept secure on the server
       
-      const externalUrl = "https://ais-dev-lvmun5ushirn36utur7hyn-168492443119.europe-west1.run.app/api/sync-metrics";
+      const externalUrl = "https://ais-pre-2mbbklwnkvmuhcwa3esiy5-168492443119.europe-west1.run.app/api/sync-metrics";
 
       const upstreamResponse = await fetch(externalUrl, {
         method: "POST",
@@ -26,17 +26,23 @@ async function startServer() {
         body: JSON.stringify(payload),
       });
 
+      const responseText = await upstreamResponse.text();
+      let responseData: any;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch {
+        responseData = { message: responseText };
+      }
+
       if (!upstreamResponse.ok) {
-        const errorText = await upstreamResponse.text();
-        console.error("Upstream dashboard sync failed:", upstreamResponse.statusText, errorText);
+        console.error("Upstream dashboard sync failed:", upstreamResponse.status, upstreamResponse.statusText, responseText);
         return res.status(upstreamResponse.status).json({
           success: false,
           error: upstreamResponse.statusText,
-          details: errorText
+          details: responseData
         });
       }
 
-      const responseData = await upstreamResponse.json();
       return res.status(200).json(responseData);
     } catch (err: any) {
       console.error("Error proxying sync-metrics request:", err);
