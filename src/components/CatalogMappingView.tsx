@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Database, FileSpreadsheet, Loader2, CheckCircle2, 
-  AlertCircle, Sparkles, Save, RefreshCw, ChevronDown 
+  AlertCircle, Sparkles, Save, RefreshCw, ChevronDown,
+  Search, X, Check
 } from 'lucide-react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -249,10 +250,10 @@ export default function CatalogMappingView() {
                       {item.count} svar
                     </td>
                     <td className="py-3 px-3">
-                      <select
+                      <SearchableDropdown
                         value={mappedValue}
-                        onChange={(e) => {
-                          const val = e.target.value;
+                        options={masterCatalog}
+                        onChange={(val) => {
                           setMappings(prev => {
                             const updated = { ...prev };
                             if (val) {
@@ -263,15 +264,8 @@ export default function CatalogMappingView() {
                             return updated;
                           });
                         }}
-                        className="w-full max-w-md px-3 py-1.5 bg-white border border-inera-secondary-90 rounded-lg text-sm font-semibold text-inera-neutral-10 focus:outline-none focus:ring-2 focus:ring-inera-primary-40/30"
-                      >
-                        <option value="">-- Ingen mappning (behåll internt namn) --</option>
-                        {[...masterCatalog].sort((a, b) => a.localeCompare(b, 'sv')).map(masterProd => (
-                          <option key={masterProd} value={masterProd}>
-                            {masterProd}
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="-- Sök och välj produkt --"
+                      />
                     </td>
                     <td className="py-3 px-3">
                       {isMapped ? (
@@ -292,6 +286,151 @@ export default function CatalogMappingView() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ===============================================================
+// SearchableDropdown Component (A-Ö sorted, search-enabled)
+// ===============================================================
+interface SearchableDropdownProps {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  placeholder?: string;
+}
+
+function SearchableDropdown({ value, options, onChange, placeholder = "-- Välj produkt --" }: SearchableDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Filter and sort options A-Ö (Swedish sorting 'sv')
+  const sortedFilteredOptions = [...options]
+    .sort((a, b) => a.localeCompare(b, 'sv'))
+    .filter(opt => opt.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  return (
+    <div className="relative w-full max-w-md" ref={dropdownRef}>
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => {
+          setIsOpen(!isOpen);
+          setSearchTerm(''); // Clear search when opening
+        }}
+        className={cn(
+          "w-full flex items-center justify-between px-3 py-2 bg-white border rounded-lg text-sm font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-inera-primary-40/30 text-left",
+          value ? "border-inera-secondary-90 text-inera-neutral-10" : "border-inera-secondary-90 text-inera-neutral-40"
+        )}
+      >
+        <span className="truncate">{value || placeholder}</span>
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          {value && (
+            <span
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent opening dropdown
+                onChange('');
+              }}
+              className="p-0.5 rounded-full hover:bg-inera-secondary-95 text-inera-neutral-40 hover:text-inera-neutral-20 transition-colors"
+              title="Rensa val"
+            >
+              <X size={14} />
+            </span>
+          )}
+          <ChevronDown size={16} className={cn("text-inera-neutral-40 transition-transform duration-200", isOpen && "rotate-180")} />
+        </div>
+      </button>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-1.5 bg-white border border-inera-secondary-90 rounded-lg shadow-xl max-h-64 flex flex-col overflow-hidden animate-in fade-in slide-in-from-top-1 duration-150">
+          {/* Search Input Box */}
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-inera-secondary-95 bg-inera-secondary-95/30 shrink-0">
+            <Search size={14} className="text-inera-neutral-40 shrink-0" />
+            <input
+              type="text"
+              className="w-full bg-transparent border-0 p-0 text-sm font-medium text-inera-neutral-10 focus:outline-none focus:ring-0 placeholder-inera-neutral-40"
+              placeholder="Sök i grundkatalogen (A-Ö)..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onClick={(e) => e.stopPropagation()} // Stop propagation to avoid closing dropdown
+              autoFocus
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSearchTerm('');
+                }}
+                className="p-0.5 rounded-full hover:bg-inera-secondary-95 text-inera-neutral-40"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+
+          {/* Options List */}
+          <div className="overflow-y-auto flex-1 py-1 max-h-48 scrollbar-thin">
+            <button
+              type="button"
+              onClick={() => {
+                onChange('');
+                setIsOpen(false);
+              }}
+              className={cn(
+                "w-full text-left px-3 py-2 text-xs font-bold transition-colors hover:bg-inera-secondary-95 border-b border-inera-secondary-95/50",
+                !value ? "text-inera-primary-40 bg-inera-primary-40/5" : "text-inera-neutral-40"
+              )}
+            >
+              -- Ingen mappning (behåll internt namn) --
+            </button>
+
+            {sortedFilteredOptions.length > 0 ? (
+              sortedFilteredOptions.map((opt) => {
+                const isSelected = opt === value;
+                return (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => {
+                      onChange(opt);
+                      setIsOpen(false);
+                    }}
+                    className={cn(
+                      "w-full text-left px-3 py-1.5 text-sm font-semibold transition-colors flex items-center justify-between",
+                      isSelected 
+                        ? "text-inera-primary-40 bg-inera-primary-40/5 font-bold" 
+                        : "text-inera-neutral-10 hover:bg-inera-secondary-95/80"
+                    )}
+                  >
+                    <span className="truncate">{opt}</span>
+                    {isSelected && <Check size={14} className="text-inera-primary-40 shrink-0" />}
+                  </button>
+                );
+              })
+            ) : (
+              <div className="px-3 py-3 text-xs text-center text-inera-neutral-40 font-medium">
+                Hittade inga produkter
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
