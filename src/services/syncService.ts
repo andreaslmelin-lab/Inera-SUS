@@ -1,53 +1,56 @@
 // src/services/syncService.ts
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getSusGrade } from '../lib/utils';
 import { loadProductMappings } from './catalogMappingService';
 
 export async function pushMetricsToAdminDashboard(payload: {
-  source: "ux-mognad" | "inera-kunskap" | "inera-sus" | "tillg-nglighetsranking";
-  metrics: Record<string, any>;
+  source: "inera-sus";
+  metrics: {
+    score: number;
+    evaluationsCount: number;
+    responseRate: number;
+  };
   granularData?: {
-    individuals?: any[];
-    teams?: any[];
-    services?: any[];
-    events?: any[];
+    products?: Array<{
+      productId: string;
+      productName: string;
+      susScore: number;
+      responses: number;
+    }>;
   };
 }) {
   try {
+    const body = {
+      source: "inera-sus",
+      timestamp: new Date().toISOString(),
+      metrics: payload.metrics,
+      granularData: payload.granularData || { products: [] }
+    };
+
     const response = await fetch("/api/sync-metrics", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        source: payload.source,
-        timestamp: new Date().toISOString(),
-        organization: "Inera AB",
-        metrics: payload.metrics,
-        granularData: payload.granularData || {}
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
-      console.warn("Kunde inte synka till Inera Admin Dashboard:", response.statusText);
+      console.warn("Kunde inte synka till Inera UX Dashboard:", response.status, response.statusText);
       return false;
     }
 
     const data = await response.json();
-    console.log("Synkroniserad med Inera Admin Dashboard!", data);
+    console.log("Data synkad med Inera UX Dashboard!", data);
     return true;
   } catch (error) {
-    console.error("Fel vid synkronisering med Inera Admin Dashboard:", error);
+    console.error("Fel vid synkronisering med Inera UX Dashboard:", error);
     return false;
   }
 }
 
 export async function triggerSusMetricsSync() {
   try {
-    const productsSnap = await getDocs(collection(db, 'products'));
-    const products = productsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-
     const measurementsSnap = await getDocs(collection(db, 'measurements'));
     const measurements = measurementsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
 
@@ -57,70 +60,78 @@ export async function triggerSusMetricsSync() {
     // Calculate total scores from all responses
     let totalScoreSum = 0;
     responses.forEach(r => {
-      totalScoreSum += r.susScore;
+      totalScoreSum += (r.susScore || 0);
     });
-    const overallScore = responses.length > 0 ? Math.round(totalScoreSum / responses.length) : 0;
+    const overallScore = responses.length > 0 
+      ? Math.round((totalScoreSum / responses.length) * 10) / 10 
+      : 0;
 
     const mappings = await loadProductMappings();
 
+    // Fetch products to support direct ID or exact name matching
+    const productsSnap = await getDocs(collection(db, 'products'));
+    const products = productsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+    const productMap = new Map<string, any>();
+    products.forEach(p => {
+      productMap.set(p.id, p);
+      productMap.set(p.name.toLowerCase().trim(), p);
+    });
+
     // Group responses by variantName mapped to official master catalog product names
-    const variantMetricsMap: Record<string, { totalScore: number; count: number }> = {};
+    const variantMetricsMap: Record<string, { totalScore: number; count: number; productId: string }> = {};
     responses.forEach(r => {
-      const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Övriga' : (r.variantName || 'Övriga');
-      const mappedName = mappings[rawName] || rawName;
-      if (!variantMetricsMap[mappedName]) {
-        variantMetricsMap[mappedName] = { totalScore: 0, count: 0 };
+      // Find matching product in database
+      let matchedProduct = null;
+      const rawName = (r.variantName || '').trim();
+      const rawNameLower = rawName.toLowerCase();
+
+      if (productMap.has(rawName)) {
+        matchedProduct = productMap.get(rawName);
+      } else if (productMap.has(rawNameLower)) {
+        matchedProduct = productMap.get(rawNameLower);
+      } else if (r.productId && productMap.has(r.productId)) {
+        matchedProduct = productMap.get(r.productId);
       }
-      variantMetricsMap[mappedName].totalScore += r.susScore;
+
+      let mappedName = '';
+      let prodId = '';
+
+      if (matchedProduct) {
+        mappedName = matchedProduct.name;
+        prodId = matchedProduct.id;
+      } else {
+        const normalizedRaw = rawName === 'Generell' || rawName === 'Other' || rawName === 'Övriga' ? 'Övriga' : rawName;
+        mappedName = mappings[normalizedRaw] || normalizedRaw || 'Övriga';
+        prodId = (r.productId || mappedName).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'prod-general';
+      }
+
+      if (!variantMetricsMap[mappedName]) {
+        variantMetricsMap[mappedName] = { 
+          totalScore: 0, 
+          count: 0, 
+          productId: prodId
+        };
+      }
+      variantMetricsMap[mappedName].totalScore += (r.susScore || 0);
       variantMetricsMap[mappedName].count++;
     });
 
     const productMetrics = Object.entries(variantMetricsMap).map(([name, data]) => ({
-      name,
-      score: data.count > 0 ? Math.round(data.totalScore / data.count) : 0,
+      productId: data.productId,
+      productName: name,
+      susScore: data.count > 0 ? Math.round((data.totalScore / data.count) * 10) / 10 : 0,
       responses: data.count
     }));
-
-    // Services (formerly products)
-    const services = products.map(product => {
-      const prodResponses = responses.filter(r => r.productId === product.id);
-      const serviceTotalScore = prodResponses.reduce((sum, r) => sum + r.susScore, 0);
-      const serviceCount = prodResponses.length;
-      return {
-        serviceId: product.id,
-        serviceName: product.name,
-        susScore: serviceCount > 0 ? Math.round(serviceTotalScore / serviceCount) : 0,
-        responsesCount: serviceCount,
-        wcagPassRate: null,
-        criticalWcagErrors: null
-      };
-    });
-
-    const events = responses.map(r => {
-      const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Övriga' : (r.variantName || 'Övriga');
-      return {
-        eventId: r.id,
-        timestamp: r.submitDate ? (r.submitDate.toDate ? r.submitDate.toDate().toISOString() : new Date(r.submitDate).toISOString()) : new Date().toISOString(),
-        eventType: "SUS_SURVEY_COMPLETED",
-        targetServiceId: r.productId,
-        productName: mappings[rawName] || rawName,
-        scoreGiven: r.susScore
-      };
-    });
 
     return await pushMetricsToAdminDashboard({
       source: "inera-sus",
       metrics: {
         score: overallScore,
-        grade: getSusGrade(overallScore),
-        evaluationsCount: measurements.length,
-        responseRate: 100,
-        productsCount: productMetrics.length,
-        products: productMetrics
+        evaluationsCount: responses.length > 0 ? responses.length : measurements.length,
+        responseRate: 100
       },
       granularData: {
-        services,
-        events
+        products: productMetrics
       }
     });
   } catch (err) {
@@ -128,4 +139,5 @@ export async function triggerSusMetricsSync() {
     return false;
   }
 }
+
 

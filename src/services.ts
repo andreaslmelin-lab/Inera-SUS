@@ -22,6 +22,16 @@ export interface Product {
   id: string;
   name: string;
   description?: string;
+  teamId?: string;
+  teamName?: string;
+  trainId?: string;
+  trainName?: string;
+  uxLead?: string;
+  rte?: string;
+  maturity?: number;
+  susScore?: number;
+  idsVersion?: string;
+  comment?: string;
 }
 
 export interface Variant {
@@ -103,12 +113,23 @@ export const ProductService = {
     }
   },
 
-  async ensureProduct(name: string): Promise<string> {
-    const id = name.toLowerCase().replace(/\s+/g, '-');
+  async ensureProduct(nameOrId: string): Promise<string> {
+    const trimmed = nameOrId.trim();
+    if (!trimmed) return '1177';
+    
+    // Check if the input is already an existing product ID
+    const exactRef = doc(db, 'products', trimmed);
+    const exactSnap = await getDoc(exactRef);
+    if (exactSnap.exists()) {
+      return trimmed;
+    }
+
+    // Try checking if it's a slugified version of a name
+    const id = trimmed.toLowerCase().replace(/\s+/g, '-');
     const docRef = doc(db, 'products', id);
     const docSnap = await getDoc(docRef);
     if (!docSnap.exists()) {
-      await setDoc(docRef, { id, name });
+      await setDoc(docRef, { id, name: trimmed, type: 'product' });
     }
     return id;
   }
@@ -347,6 +368,56 @@ export const MeasurementService = {
         error: (err) => reject(err)
       });
     });
+  },
+
+  async addManualMeasurement(productId: string, userId: string, score: number, responsesCount: number, date?: Date): Promise<void> {
+    const finalDate = date || new Date();
+    const measurementRef = await addDoc(collection(db, 'measurements'), {
+      productId,
+      date: Timestamp.fromDate(finalDate),
+      uploadedBy: userId,
+      fileName: 'Manuell inmatning',
+      averageScore: score,
+      medianScore: score,
+      responseCount: responsesCount,
+      variantScores: {
+        'Generell': {
+          score: score,
+          count: responsesCount,
+          min: score,
+          max: score,
+          median: score,
+          q1: score,
+          q3: score
+        }
+      },
+      stats: {
+        min: score,
+        max: score,
+        q1: score,
+        q3: score
+      }
+    });
+
+    const batch = writeBatch(db);
+    const respRef = doc(collection(db, 'responses'));
+    batch.set(respRef, {
+      measurementId: measurementRef.id,
+      productId,
+      variantName: 'Generell',
+      susScore: score,
+      comment: 'Manuell inmatning av SUS-poäng',
+      submitDate: Timestamp.fromDate(finalDate),
+      startDate: Timestamp.fromDate(finalDate),
+      otherText: ''
+    });
+
+    const vId = 'generell';
+    const vRef = doc(db, `products/${productId}/variants`, vId);
+    batch.set(vRef, { id: vId, productId, name: 'Generell' }, { merge: true });
+
+    await batch.commit();
+    triggerSusMetricsSync().catch(err => console.error("Sync error:", err));
   },
 
   async deleteMeasurement(measurementId: string): Promise<void> {

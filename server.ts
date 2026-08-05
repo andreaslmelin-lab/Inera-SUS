@@ -15,12 +15,13 @@ async function startServer() {
       const payload = req.body;
       const apiToken = "inera_ux_token_11am0nao"; // Kept secure on the server
       
-      const externalUrl = "https://ais-pre-2mbbklwnkvmuhcwa3esiy5-168492443119.europe-west1.run.app/api/sync-metrics";
+      const externalUrl = "https://inera-ux-dashboard.vercel.app/api/sync-metrics";
 
       const upstreamResponse = await fetch(externalUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-API-Token": apiToken,
           "x-api-token": apiToken,
         },
         body: JSON.stringify(payload),

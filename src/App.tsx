@@ -8,10 +8,11 @@ import {
   TrendingUp, Users, MessageSquare, Filter, FileSpreadsheet,
   AlertCircle, CheckCircle2, Loader2, Search, ArrowLeft,
   Info, Calendar, ArrowUpRight, ArrowDownRight, Trash2, Settings,
-  User as LucideUser
+  User as LucideUser, RefreshCw
 } from 'lucide-react';
 import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from './firebase';
 import { Product, ProductService, Measurement, MeasurementService, ResponseData, Variant } from './services';
+import { triggerSusMetricsSync } from './services/syncService';
 import { cn, getSusGrade, calculateMedian, getMedianExplanation } from './lib/utils';
 import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
@@ -20,6 +21,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ApiView from './components/ApiView';
 import RawDataView from './components/RawDataView';
 import CatalogMappingView from './components/CatalogMappingView';
+import GrundstrukturView from './components/GrundstrukturView';
 import ineraLogo from './Images/Inera logo 1.0 färg.svg';
 
 const ADMIN_EMAILS = ['andreas.melin@inera.se', 'andreas.melin@inera', 'andreas.l.melin@gmail.com'];
@@ -202,7 +204,7 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
 };
 
 const AdminView = () => {
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'api' | 'rawdata' | 'catalog'>('users');
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -263,6 +265,12 @@ const AdminView = () => {
           onClick={() => setActiveAdminTab('catalog')}
         >
           Produktkatalog & Mappning
+        </button>
+        <button 
+          className={cn("text-sm font-bold pb-3 border-b-2 transition-colors", activeAdminTab === 'grundstruktur' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+          onClick={() => setActiveAdminTab('grundstruktur')}
+        >
+          Inläsning Inera Grundstruktur
         </button>
       </div>
 
@@ -366,6 +374,18 @@ const AdminView = () => {
             <CatalogMappingView />
           </motion.div>
         )}
+
+        {activeAdminTab === 'grundstruktur' && (
+          <motion.div
+            key="grundstruktur"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            <GrundstrukturView />
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );
@@ -443,6 +463,11 @@ export default function App() {
   const [allMeasurements, setAllMeasurements] = useState<Measurement[]>([]);
   const [selectedMeasurementId, setSelectedMeasurementId] = useState<string>('all');
   const [uploadProductId, setUploadProductId] = useState<string>('');
+  const [uploadMethod, setUploadMethod] = useState<'csv' | 'manual'>('csv');
+  const [manualSusScore, setManualSusScore] = useState<string>('');
+  const [manualResponseCount, setManualResponseCount] = useState<string>('');
+  const [manualDate, setManualDate] = useState<string>('');
+  const [isSavingManual, setIsSavingManual] = useState<boolean>(false);
   
   // Advanced Filters
   const [susRange, setSusRange] = useState<{ min: number; max: number }>({ min: 0, max: 100 });
@@ -456,6 +481,26 @@ export default function App() {
   const [resetError, setResetError] = useState<string | null>(null);
   const [measurementToDelete, setMeasurementToDelete] = useState<Measurement | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isManualSyncing, setIsManualSyncing] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
+  const handleManualSync = async () => {
+    setIsManualSyncing(true);
+    setSyncNotice(null);
+    try {
+      const ok = await triggerSusMetricsSync();
+      if (ok) {
+        setSyncNotice("Data synkad med Inera UX Dashboard");
+        setTimeout(() => setSyncNotice(null), 5000);
+      } else {
+        console.error("Fel vid manuell synkning till Inera UX Dashboard");
+      }
+    } catch (err) {
+      console.error("Fel vid synk:", err);
+    } finally {
+      setIsManualSyncing(false);
+    }
+  };
 
   const overallLatestDate = useMemo(() => {
     if (products.length === 0) return undefined;
@@ -645,14 +690,68 @@ export default function App() {
 
     setIsUploading(true);
     setUploadStatus(null);
+    setSyncNotice(null);
     try {
       const finalPId = await ProductService.ensureProduct(pId);
       await MeasurementService.uploadCsv(file, finalPId, user.uid);
       setUploadStatus({ type: 'success', msg: 'Mätningen har laddats upp!' });
+      
+      const synced = await triggerSusMetricsSync();
+      if (synced) {
+        setSyncNotice("Data synkad med Inera UX Dashboard");
+        setTimeout(() => setSyncNotice(null), 5000);
+      }
     } catch (err: any) {
       setUploadStatus({ type: 'error', msg: err.message || 'Ett fel uppstod vid uppladdning.' });
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleManualSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadProductId || !user) {
+      setUploadStatus({ type: 'error', msg: 'Du måste välja eller skriva en tjänst först.' });
+      return;
+    }
+    
+    const scoreNum = parseFloat(manualSusScore);
+    const countNum = parseInt(manualResponseCount, 10);
+    
+    if (isNaN(scoreNum) || scoreNum < 0 || scoreNum > 100) {
+      setUploadStatus({ type: 'error', msg: 'SUS-poäng måste vara mellan 0 och 100.' });
+      return;
+    }
+    
+    if (isNaN(countNum) || countNum <= 0) {
+      setUploadStatus({ type: 'error', msg: 'Antal svar måste vara ett positivt heltal.' });
+      return;
+    }
+
+    setIsSavingManual(true);
+    setUploadStatus(null);
+    setSyncNotice(null);
+
+    try {
+      const finalPId = await ProductService.ensureProduct(uploadProductId);
+      const chosenDate = manualDate ? new Date(manualDate) : new Date();
+      
+      await MeasurementService.addManualMeasurement(finalPId, user.uid, scoreNum, countNum, chosenDate);
+      
+      setUploadStatus({ type: 'success', msg: 'Mätningen har registrerats manuellt!' });
+      setManualSusScore('');
+      setManualResponseCount('');
+      setManualDate('');
+      
+      const synced = await triggerSusMetricsSync();
+      if (synced) {
+        setSyncNotice("Data synkad med Inera UX Dashboard");
+        setTimeout(() => setSyncNotice(null), 5000);
+      }
+    } catch (err: any) {
+      setUploadStatus({ type: 'error', msg: err.message || 'Ett fel uppstod vid registrering.' });
+    } finally {
+      setIsSavingManual(false);
     }
   };
 
@@ -858,8 +957,19 @@ export default function App() {
             </div>
           </div>
 
-          {/* User Badge & Logout */}
-          <div className="flex items-center gap-5">
+          {/* User Badge & Sync & Logout */}
+          <div className="flex items-center gap-4">
+            {/* Sync Button */}
+            <button
+              onClick={handleManualSync}
+              disabled={isManualSyncing}
+              className="flex items-center gap-2 px-3 py-1.5 bg-inera-accent-40 text-white rounded-lg text-xs font-bold hover:bg-inera-accent-30 transition-colors shadow-2xs disabled:opacity-50"
+              title="Synka till Inera UX Dashboard"
+            >
+              <RefreshCw size={14} className={isManualSyncing ? "animate-spin" : ""} />
+              <span className="hidden sm:inline">Synka till Inera UX Dashboard</span>
+            </button>
+
             {/* User Pill */}
             <div className="flex items-center gap-2.5 px-3 py-1.5 bg-[#fbf9f7] border border-inera-secondary-90 rounded-lg shadow-2xs">
               <div className="w-7 h-7 rounded-full bg-white border border-inera-secondary-90 flex items-center justify-center text-inera-accent-40">
@@ -886,6 +996,19 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Sync Confirmation Banner */}
+      {syncNotice && (
+        <div className="max-w-[80rem] mx-auto mt-4 px-6">
+          <div className="bg-inera-success-95 text-inera-success-40 border border-inera-success-40 p-3 rounded-lg text-sm font-semibold flex items-center justify-between shadow-xs">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={18} />
+              <span>{syncNotice}</span>
+            </div>
+            <button onClick={() => setSyncNotice(null)} className="text-xs hover:underline">Stäng</button>
+          </div>
+        </div>
+      )}
 
       {/* Main Layout Grid */}
       <div className="max-w-[80rem] mx-auto mt-8 px-6 grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-8 items-start">
@@ -1561,7 +1684,7 @@ export default function App() {
                       >
                         <option value="">-- Välj befintlig tjänst --</option>
                         {products.map(p => (
-                          <option key={p.id} value={p.name}>{p.name}</option>
+                          <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                       </select>
                       <div className="flex items-center px-3 text-inera-neutral-60 font-bold">ELLER</div>
@@ -1576,31 +1699,108 @@ export default function App() {
                     <p className="text-[10px] text-inera-neutral-60 italic">Tips: Skriv namnet om tjänsten inte finns i listan.</p>
                   </div>
 
-                  <div className="p-6 border-2 border-dashed border-inera-secondary-90 rounded-xl hover:border-inera-primary-60 transition-colors group relative">
-                    <input 
-                      type="file" 
-                      accept=".csv" 
-                      onChange={handleFileUpload}
-                      disabled={isUploading || !uploadProductId}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                    />
-                    <div className="text-center">
-                      {isUploading ? (
-                        <div className="flex flex-col items-center gap-3">
-                          <Loader2 className="animate-spin text-inera-primary-40" size={32} />
-                          <p className="text-sm font-medium text-inera-neutral-40">Bearbetar fil...</p>
-                        </div>
-                      ) : (
-                        <>
-                          <FileSpreadsheet className={cn("mx-auto mb-4 transition-colors", !uploadProductId ? "text-inera-neutral-90" : "text-inera-neutral-60 group-hover:text-inera-primary-40")} size={40} />
-                          <p className={cn("text-sm font-bold", !uploadProductId ? "text-inera-neutral-60" : "text-inera-neutral-10")}>
-                            {!uploadProductId ? 'Välj tjänst först' : 'Klicka eller dra hit CSV-fil'}
-                          </p>
-                          <p className="text-xs text-inera-neutral-40 mt-1">Stöd för Ineras standardexport</p>
-                        </>
-                      )}
-                    </div>
+                  <div className="flex gap-2 border-b border-inera-secondary-90 pb-4">
+                    <button
+                      type="button"
+                      onClick={() => { setUploadMethod('csv'); setUploadStatus(null); }}
+                      className={cn("text-xs font-bold pb-2 border-b-2 px-4 transition-colors", uploadMethod === 'csv' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-25")}
+                    >
+                      CSV-fil
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setUploadMethod('manual'); setUploadStatus(null); }}
+                      className={cn("text-xs font-bold pb-2 border-b-2 px-4 transition-colors", uploadMethod === 'manual' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-25")}
+                    >
+                      Registrera manuellt betyg
+                    </button>
                   </div>
+
+                  {uploadMethod === 'manual' ? (
+                    <form onSubmit={handleManualSubmit} className="space-y-4 p-5 bg-inera-secondary-95/50 border border-inera-secondary-90 rounded-xl">
+                      <h4 className="text-sm font-bold text-inera-neutral-20">Ange mätvärden för tjänsten</h4>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-inera-neutral-30">Genomsnittlig SUS-poäng (0–100) *</label>
+                          <input 
+                            type="number" 
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            required
+                            placeholder="t.ex. 81.5"
+                            value={manualSusScore}
+                            onChange={(e) => setManualSusScore(e.target.value)}
+                            className="input w-full text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-inera-neutral-30">Antal svar (Evaluations Count) *</label>
+                          <input 
+                            type="number" 
+                            min="1"
+                            required
+                            placeholder="t.ex. 112"
+                            value={manualResponseCount}
+                            onChange={(e) => setManualResponseCount(e.target.value)}
+                            className="input w-full text-xs"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-inera-neutral-30">Mätningsdatum (Frivilligt, annars idag)</label>
+                        <input 
+                          type="date" 
+                          value={manualDate}
+                          onChange={(e) => setManualDate(e.target.value)}
+                          className="input w-full text-xs"
+                        />
+                      </div>
+
+                      <div className="pt-2 flex justify-end">
+                        <button
+                          type="submit"
+                          disabled={isSavingManual || !uploadProductId}
+                          className="btn btn--m btn--primary disabled:opacity-50"
+                        >
+                          {isSavingManual ? (
+                            <>
+                              <Loader2 className="animate-spin mr-2" size={16} />
+                              Sparar...
+                            </>
+                          ) : 'Spara mätvärde'}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="p-6 border-2 border-dashed border-inera-secondary-90 rounded-xl hover:border-inera-primary-60 transition-colors group relative">
+                      <input 
+                        type="file" 
+                        accept=".csv" 
+                        onChange={handleFileUpload}
+                        disabled={isUploading || !uploadProductId}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                      />
+                      <div className="text-center">
+                        {isUploading ? (
+                          <div className="flex flex-col items-center gap-3">
+                            <Loader2 className="animate-spin text-inera-primary-40" size={32} />
+                            <p className="text-sm font-medium text-inera-neutral-40">Bearbetar fil...</p>
+                          </div>
+                        ) : (
+                          <>
+                            <FileSpreadsheet className={cn("mx-auto mb-4 transition-colors", !uploadProductId ? "text-inera-neutral-90" : "text-inera-neutral-60 group-hover:text-inera-primary-40")} size={40} />
+                            <p className={cn("text-sm font-bold", !uploadProductId ? "text-inera-neutral-60" : "text-inera-neutral-10")}>
+                              {!uploadProductId ? 'Välj tjänst först' : 'Klicka eller dra hit CSV-fil'}
+                            </p>
+                            <p className="text-xs text-inera-neutral-40 mt-1">Stöd för Ineras standardexport</p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {uploadStatus && (
                     <div className={cn(
@@ -1815,11 +2015,6 @@ export default function App() {
             <img src={ineraLogo} alt="Inera Logo" className="h-6 w-auto" />
             <span className="text-inera-neutral-40 text-xs">|</span>
             <span className="text-xs text-inera-neutral-40 font-medium">© {new Date().getFullYear()} Inera AB. Alla rättigheter förbehållna.</span>
-          </div>
-          <div className="flex items-center gap-6 text-xs font-semibold">
-            <a href="https://www.inera.se" target="_blank" rel="noopener noreferrer" className="text-inera-primary-40 hover:underline">Inera.se</a>
-            <a href="mailto:ux@inera.se" className="text-inera-primary-40 hover:underline">Kontakt: ux@inera.se</a>
-            <a href="https://inera-admin.se" target="_blank" rel="noopener noreferrer" className="text-inera-primary-40 hover:underline">Inera Admin Dashboard</a>
           </div>
         </div>
       </footer>
