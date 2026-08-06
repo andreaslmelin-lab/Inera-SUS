@@ -31,11 +31,50 @@ export function calculateMedian(values: number[]): number {
   return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-export function getSusGrade(score: number): { label: string, text: string, color: string, hex: string, bgClass: string } {
-  if (score >= 80.3) return { label: 'A (Utmärkt)', text: 'Utmärkt', color: 'text-inera-success-50 bg-inera-success-95 border border-inera-success-40', hex: '#40966D', bgClass: 'bg-inera-success-50' };
-  if (score >= 68) return { label: 'B (Bra)', text: 'Bra', color: 'text-inera-info-50 bg-inera-info-95 border border-inera-info-40', hex: '#489AEB', bgClass: 'bg-inera-info-50' };
-  if (score >= 51) return { label: 'C (Godkänd)', text: 'Godkänd', color: 'text-inera-attention-50 bg-inera-attention-95 border border-inera-attention-40', hex: '#DB901B', bgClass: 'bg-inera-attention-50' };
-  return { label: 'F (Underkänd)', text: 'Underkänd', color: 'text-inera-error-50 bg-inera-error-95 border border-inera-error-40', hex: '#D74F3D', bgClass: 'bg-inera-error-50' };
+export function getSusGrade(score: number): { 
+  grade: string;
+  adjective: string;
+  interpretation: string;
+  label: string; 
+  text: string; 
+  color: string; 
+  hex: string; 
+  bgClass: string; 
+} {
+  if (score >= 90) {
+    return { 
+      grade: 'A+', adjective: 'Bästa tänkbara', interpretation: 'Exceptionellt, topp 10 procent av alla produkter',
+      label: 'A+ (Bästa tänkbara)', text: 'Bästa tänkbara', color: 'text-inera-success-50 bg-inera-success-95 border border-inera-success-40', hex: '#40966D', bgClass: 'bg-inera-success-50' 
+    };
+  }
+  if (score >= 80.3) {
+    return { 
+      grade: 'A/A-', adjective: 'Utmärkt', interpretation: 'Tydligt över genomsnittet',
+      label: 'A (Utmärkt)', text: 'Utmärkt', color: 'text-inera-success-50 bg-inera-success-95 border border-inera-success-40', hex: '#40966D', bgClass: 'bg-inera-success-50' 
+    };
+  }
+  if (score >= 74) {
+    return { 
+      grade: 'B', adjective: 'Bra', interpretation: 'Över genomsnittet',
+      label: 'B (Bra)', text: 'Bra', color: 'text-inera-info-50 bg-inera-info-95 border border-inera-info-40', hex: '#489AEB', bgClass: 'bg-inera-info-50' 
+    };
+  }
+  if (score >= 68) {
+    return { 
+      grade: 'C', adjective: 'Godkänt, genomsnitt', interpretation: 'Acceptabelt men förbättringsbart',
+      label: 'C (Godkänt)', text: 'Godkänt', color: 'text-inera-attention-50 bg-inera-attention-95 border border-inera-attention-40', hex: '#DB901B', bgClass: 'bg-inera-attention-50' 
+    };
+  }
+  if (score >= 51) {
+    return { 
+      grade: 'D', adjective: 'Under genomsnitt', interpretation: 'Märkbara användbarhetsproblem som bör åtgärdas',
+      label: 'D (Under genomsnitt)', text: 'Under genomsnitt', color: 'text-inera-attention-50 bg-inera-attention-95 border border-inera-attention-40', hex: '#DB901B', bgClass: 'bg-inera-attention-50' 
+    };
+  }
+  return { 
+    grade: 'F', adjective: 'Oacceptabelt', interpretation: 'Kritiska användbarhetsbrister, kräver omdesign',
+    label: 'F (Oacceptabelt)', text: 'Oacceptabelt', color: 'text-inera-error-50 bg-inera-error-95 border border-inera-error-40', hex: '#D74F3D', bgClass: 'bg-inera-error-50' 
+  };
 }
 
 export function getMedianExplanation(avg: number, median: number): string | undefined {

@@ -22,6 +22,8 @@ import ApiView from './components/ApiView';
 import RawDataView from './components/RawDataView';
 import CatalogMappingView from './components/CatalogMappingView';
 import GrundstrukturView from './components/GrundstrukturView';
+import SusAdminView from './components/SusAdminView';
+import PublicSurveyView from './components/PublicSurveyView';
 import ineraLogo from './Images/Inera logo 1.0 färg.svg';
 
 const ADMIN_EMAILS = ['andreas.melin@inera.se', 'andreas.melin@inera', 'andreas.l.melin@gmail.com'];
@@ -445,9 +447,17 @@ const SusLegend = () => (
 // --- Main App ---
 
 export default function App() {
+  const urlParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const publicSurveyId = urlParams.get('sus_survey');
+  const publicRespondentId = urlParams.get('respondent') || undefined;
+
+  if (publicSurveyId) {
+    return <PublicSurveyView surveyId={publicSurveyId} respondentId={publicRespondentId} />;
+  }
+
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'admin' | 'api' | 'rawdata'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'admin' | 'api' | 'rawdata' | 'sus_admin'>('dashboard');
   const [authError, setAuthError] = useState<string>('');
   const [view, setView] = useState<'company' | 'product'>('company');
   const [products, setProducts] = useState<Product[]>([]);
@@ -1029,6 +1039,12 @@ export default function App() {
               active={activeTab === 'upload'} 
               onClick={() => setActiveTab('upload')} 
             />
+            <SidebarItem 
+              icon={MessageSquare} 
+              label="SUS-modul" 
+              active={activeTab === 'sus_admin'} 
+              onClick={() => setActiveTab('sus_admin')} 
+            />
             {user.email && ADMIN_EMAILS.includes(user.email) && (
               <SidebarItem 
                 icon={Settings} 
@@ -1061,6 +1077,7 @@ export default function App() {
 
         {/* Main Content Area */}
         <main className="min-w-0">
+          {activeTab === 'sus_admin' && <SusAdminView />}
           {activeTab === 'dashboard' && (
             <div className="bg-inera-secondary-95 border border-inera-secondary-90 rounded-2xl p-6 mb-8 shadow-sm">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">

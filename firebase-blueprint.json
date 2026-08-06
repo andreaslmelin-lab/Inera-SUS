@@ -12,6 +12,27 @@
       },
       "required": ["uid", "email"]
     },
+    "Train": {
+      "title": "Train",
+      "description": "An organizational train",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "An organizational team",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "trainId": { "type": "string" }
+      },
+      "required": ["id", "name", "trainId"]
+    },
     "Product": {
       "title": "Product",
       "description": "A main product in Inera's catalog",
@@ -19,9 +40,25 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "description": { "type": "string" }
+        "teamId": { "type": "string" }
       },
-      "required": ["id", "name"]
+      "required": ["id", "name", "teamId"]
+    },
+    "SusSurvey": {
+      "title": "SusSurvey",
+      "description": "A SUS survey round",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "inactive"] },
+        "type": { "type": "string", "enum": ["general", "unique"] },
+        "endDate": { "type": "string", "format": "date-time" },
+        "maxResponses": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "productId", "name", "status"]
     },
     "Variant": {
       "title": "Variant",
@@ -84,9 +121,21 @@
       "schema": { "$ref": "User" },
       "description": "User profiles"
     },
+    "/trains/{trainId}": {
+      "schema": { "$ref": "Train" },
+      "description": "Organizational trains"
+    },
+    "/teams/{teamId}": {
+      "schema": { "$ref": "Team" },
+      "description": "Organizational teams"
+    },
     "/products/{productId}": {
       "schema": { "$ref": "Product" },
       "description": "Main products"
+    },
+    "/susSurveys/{surveyId}": {
+      "schema": { "$ref": "SusSurvey" },
+      "description": "SUS survey rounds"
     },
     "/products/{productId}/variants/{variantId}": {
       "schema": { "$ref": "Variant" },

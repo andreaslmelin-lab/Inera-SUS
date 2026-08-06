@@ -21,11 +21,14 @@ async function startServer() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-API-Token": apiToken,
+          "Authorization": `Bearer ${apiToken}`,
           "x-api-token": apiToken,
+          "X-API-TOKEN": apiToken,
         },
         body: JSON.stringify(payload),
       });
+
+      console.log("Sync request payload:", JSON.stringify(payload));
 
       const responseText = await upstreamResponse.text();
       let responseData: any;
@@ -37,9 +40,9 @@ async function startServer() {
 
       if (!upstreamResponse.ok) {
         console.error("Upstream dashboard sync failed:", upstreamResponse.status, upstreamResponse.statusText, responseText);
-        return res.status(upstreamResponse.status).json({
+        return res.status(200).json({
           success: false,
-          error: upstreamResponse.statusText,
+          error: `Upstream service response: ${upstreamResponse.status} ${upstreamResponse.statusText}`,
           details: responseData
         });
       }

@@ -65,6 +65,33 @@ service cloud.firestore {
              data.source is string && data.timestamp is string && data.metrics is map;
     }
 
+    function isValidTrain(data) {
+      return data.keys().hasAll(['id', 'name']) &&
+             data.id is string && data.name is string;
+    }
+
+    function isValidTeam(data) {
+      return data.keys().hasAll(['id', 'name', 'trainId']) &&
+             data.id is string && data.name is string && data.trainId is string;
+    }
+
+    function isValidSusSurvey(data) {
+      return data.keys().hasAll(['productId', 'name', 'status']) &&
+             data.productId is string && data.name is string &&
+             (data.status == 'active' || data.status == 'inactive');
+    }
+
+    function isValidSurveyRespondent(data) {
+      return data.keys().hasAll(['surveyId', 'email']) &&
+             data.surveyId is string && data.email is string;
+    }
+
+    function isValidSusResponse(data) {
+      return data.keys().hasAll(['surveyId', 'productId', 'susScore', 'answers']) &&
+             data.surveyId is string && data.productId is string && data.susScore is number &&
+             data.answers is list;
+    }
+
     // Rules
     match /settings/{settingId} {
       allow read: if isAuthenticated();
@@ -77,6 +104,16 @@ service cloud.firestore {
       allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data));
     }
 
+    match /trains/{trainId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() && isValidTrain(request.resource.data);
+    }
+
+    match /teams/{teamId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin() && isValidTeam(request.resource.data);
+    }
+
     match /products/{productId} {
       allow read: if true;
       allow create, update: if isAdmin() && isValidProduct(request.resource.data);
@@ -87,6 +124,24 @@ service cloud.firestore {
         allow create, update: if isAuthenticated(); // Allow users to create variants during upload
         allow delete: if isAdmin();
       }
+    }
+
+    match /susSurveys/{surveyId} {
+      allow read: if true;
+      allow create, delete: if isAuthenticated() && isValidSusSurvey(request.resource.data);
+      allow update: if true; // Allow status updates when survey finishes or admins update
+    }
+
+    match /surveyRespondents/{respondentId} {
+      allow read: if true;
+      allow create, delete: if isAuthenticated() && isValidSurveyRespondent(request.resource.data);
+      allow update: if true; // Allow public respondents to mark used = true
+    }
+
+    match /susResponses/{responseId} {
+      allow read: if true;
+      allow create: if true; // Allow public respondents to submit responses
+      allow update, delete: if isAuthenticated();
     }
 
     match /measurements/{measurementId} {
