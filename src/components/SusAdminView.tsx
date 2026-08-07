@@ -5,14 +5,26 @@ import { SusSurvey, Product, SurveyRespondent, SusResponse } from '../types';
 import { 
   Plus, AlertCircle, ChevronRight, ChevronLeft, Copy, Check, Trash2, Upload, 
   Users, Link2, Calendar, FileText, Download, RefreshCw, ExternalLink, BarChart2,
-  CheckCircle2, Info, ArrowUpRight, ArrowDownRight, MessageSquare, Search, X
+  CheckCircle2, Info, ArrowUpRight, ArrowDownRight, MessageSquare, Search, X, Edit3
 } from 'lucide-react';
 import { getSusGrade, calculateMedian } from '../lib/utils';
 import { loadMasterCatalog } from '../services/catalogMappingService';
+import { triggerSusMetricsSync } from '../services/syncService';
+
+const getBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    if (window.location.origin.includes('run.app') || window.location.origin.includes('localhost')) {
+      return 'https://inera-sus.vercel.app';
+    }
+    return window.location.origin;
+  }
+  return 'https://inera-sus.vercel.app';
+};
 
 export default function SusAdminView() {
   const [surveys, setSurveys] = useState<SusSurvey[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [allResponsesCount, setAllResponsesCount] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [mode, setMode] = useState<'list' | 'create' | 'detail'>('list');
@@ -23,6 +35,11 @@ export default function SusAdminView() {
   const [responses, setResponses] = useState<SusResponse[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   
+  // Edit mode states
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFormData, setEditFormData] = useState<Partial<SusSurvey>>({});
+  const [editError, setEditError] = useState('');
+
   // Create wizard states
   const [step, setStep] = useState(1);
   const [productFilter, setProductFilter] = useState('');
@@ -53,40 +70,61 @@ export default function SusAdminView() {
     setLoading(true);
     setError('');
     try {
-      const [surveySnap, productSnap, masterCatalogData] = await Promise.all([
+      const [surveySnap, productSnap, responsesSnap, masterCatalogData] = await Promise.all([
         getDocs(collection(db, 'susSurveys')),
         getDocs(collection(db, 'products')),
+        getDocs(collection(db, 'susResponses')),
         loadMasterCatalog()
       ]);
 
       setSurveys(surveySnap.docs.map(d => ({ ...d.data(), id: d.id } as SusSurvey)));
       
-      const dbProducts = productSnap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
-
-      // Build a unified product list from both DB products and Master Catalog
-      const productMap = new Map<string, Product>();
-
-      // 1. Add DB products
-      dbProducts.forEach(p => {
-        if (p.name && p.name.trim()) {
-          productMap.set(p.name.trim().toLowerCase(), p);
+      // Calculate response counts per survey
+      const counts: Record<string, number> = {};
+      responsesSnap.docs.forEach(doc => {
+        const data = doc.data();
+        const sId = data.surveyId;
+        if (sId) {
+          counts[sId] = (counts[sId] || 0) + 1;
         }
       });
+      setAllResponsesCount(counts);
 
-      // 2. Add Master Catalog products if not already present
-      masterCatalogData.forEach(catName => {
-        const cleanName = catName.trim();
-        if (cleanName) {
-          const key = cleanName.toLowerCase();
-          if (!productMap.has(key)) {
-            productMap.set(key, {
-              id: cleanName,
-              name: cleanName,
-              teamId: 'team-inera'
-            });
+      const dbProducts = productSnap.docs.map(d => ({ ...d.data(), id: d.id } as Product));
+
+      // Build a unified product list
+      const productMap = new Map<string, Product>();
+
+      // 1. Add DB products - these are the authoritative products (Tåg/Team mapping)
+      // Deduplicate by name to handle potential DB clutter
+      dbProducts.forEach(p => {
+        if (p.name && p.name.trim()) {
+          const nameKey = p.name.trim().toLowerCase();
+          // Prefer existing entry if it has more metadata or is newer
+          if (!productMap.has(nameKey)) {
+            productMap.set(nameKey, p);
           }
         }
       });
+
+      // 2. Add Master Catalog products ONLY if DB is empty or name is truly unique
+      // This prevents the 146 duplicates by ensuring we don't add catalog items 
+      // that already exist in the DB structure.
+      if (dbProducts.length === 0) {
+        masterCatalogData.forEach(catName => {
+          const cleanName = catName.trim();
+          if (cleanName) {
+            const key = cleanName.toLowerCase();
+            if (!productMap.has(key)) {
+              productMap.set(key, {
+                id: cleanName,
+                name: cleanName,
+                teamId: 'team-inera'
+              });
+            }
+          }
+        });
+      }
 
       // 3. Sort all products alphabetically in Swedish locale (a-ö)
       const allProductsCombined = Array.from(productMap.values()).sort((a, b) => 
@@ -155,15 +193,43 @@ export default function SusAdminView() {
     }
   };
 
+  const ensureAbsoluteUrl = (url: string) => {
+    if (!url) return '';
+    const trimmed = url.trim();
+    if (!trimmed) return '';
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
+
   const handleDeleteSurvey = async (surveyId: string) => {
-    if (!confirm("Är du säker på att du vill ta bort denna SUS-omgång? Detta tar bort omgången och dess inställningar.")) return;
+    if (!confirm("VARNING: Är du säker på att du vill radera denna SUS-omgång?\n\nDetta raderar permanent omgången samt alla ankomna svar och inbjudna respondenter.")) return;
     try {
+      // 1. Delete associated susResponses
+      const qResp = query(collection(db, 'susResponses'), where('surveyId', '==', surveyId));
+      const respSnap = await getDocs(qResp);
+      for (const rDoc of respSnap.docs) {
+        await deleteDoc(rDoc.ref);
+      }
+
+      // 2. Delete associated surveyRespondents
+      const qResp2 = query(collection(db, 'surveyRespondents'), where('surveyId', '==', surveyId));
+      const resp2Snap = await getDocs(qResp2);
+      for (const rDoc of resp2Snap.docs) {
+        await deleteDoc(rDoc.ref);
+      }
+
+      // 3. Delete the survey round document
       await deleteDoc(doc(db, 'susSurveys', surveyId));
+
+      // 4. Trigger metrics sync
+      await triggerSusMetricsSync();
+
       setMode('list');
       setSelectedSurvey(null);
       fetchData();
     } catch (err) {
       console.error("Error deleting survey:", err);
+      alert("Kunde inte radera omgången och dess data.");
     }
   };
 
@@ -277,7 +343,7 @@ export default function SusAdminView() {
         freeTextLabel: formData.freeTextLabel || '',
         thankYouText: formData.thankYouText || '',
         externalSurveyEnabled: formData.externalSurveyEnabled || false,
-        externalSurveyUrl: formData.externalSurveyUrl || '',
+        externalSurveyUrl: formData.externalSurveyUrl ? ensureAbsoluteUrl(formData.externalSurveyUrl) : '',
         externalSurveyBtnText: formData.externalSurveyBtnText || 'Fortsätt',
         createdAt: new Date().toISOString()
       });
@@ -304,13 +370,105 @@ export default function SusAdminView() {
     setTimeout(() => setCopiedId(null), 3000);
   };
 
+  const openEditModal = (survey: SusSurvey) => {
+    setEditFormData({ ...survey });
+    setEditError('');
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editFormData.id) return;
+    if (!editFormData.name?.trim()) {
+      setEditError('Omgångens namn kan inte vara tomt.');
+      return;
+    }
+    if (!editFormData.productId) {
+      setEditError('Vänligen välj en produkt.');
+      return;
+    }
+
+    if (editFormData.status === 'active') {
+      const activeExisting = checkActiveSurveyForProduct(editFormData.productId, editFormData.id);
+      if (activeExisting) {
+        const prod = products.find(p => p.id === editFormData.productId);
+        setEditError(`Produkten "${prod?.name || editFormData.productId}" har redan en annan aktiv omgång ("${activeExisting.name}"). Inaktivera den först.`);
+        return;
+      }
+    }
+
+    try {
+      const updateData: Partial<SusSurvey> = {
+        name: editFormData.name.trim(),
+        productId: editFormData.productId,
+        status: editFormData.status || 'active',
+        type: editFormData.type || 'general',
+        month: editFormData.month || new Date().getMonth() + 1,
+        year: editFormData.year || new Date().getFullYear(),
+        endCondition: editFormData.endCondition || 'date',
+        endDate: editFormData.endDate || '',
+        maxResponses: editFormData.maxResponses || null,
+        introText: editFormData.introText || '',
+        freeTextLabel: editFormData.freeTextLabel || '',
+        thankYouText: editFormData.thankYouText || '',
+        externalSurveyEnabled: editFormData.externalSurveyEnabled || false,
+        externalSurveyUrl: editFormData.externalSurveyUrl ? ensureAbsoluteUrl(editFormData.externalSurveyUrl) : '',
+        externalSurveyBtnText: editFormData.externalSurveyBtnText || 'Fortsätt'
+      };
+
+      await updateDoc(doc(db, 'susSurveys', editFormData.id), updateData);
+
+      setSurveys(prev => prev.map(s => s.id === editFormData.id ? { ...s, ...updateData } as SusSurvey : s));
+      if (selectedSurvey?.id === editFormData.id) {
+        setSelectedSurvey(prev => prev ? ({ ...prev, ...updateData } as SusSurvey) : null);
+      }
+
+      setIsEditing(false);
+    } catch (err) {
+      console.error("Error updating survey:", err);
+      setEditError("Kunde inte spara ändringarna.");
+    }
+  };
+
+  // Export recipients and unique links to Excel CSV
+  const exportRecipientsExcel = (filter: 'all' | 'unanswered' | 'answered') => {
+    if (!selectedSurvey) return;
+
+    let filtered = respondents;
+    let filterName = 'Alla';
+
+    if (filter === 'unanswered') {
+      filtered = respondents.filter(r => !r.used);
+      filterName = 'Ej_besvarade';
+    } else if (filter === 'answered') {
+      filtered = respondents.filter(r => r.used);
+      filterName = 'Besvarade';
+    }
+
+    const headers = ["E-post", "Länk", "Status", "Besvarat datum"];
+    const rows = filtered.map(r => [
+      r.email,
+      `${getBaseUrl()}/?sus_survey=${selectedSurvey.id}&respondent=${r.id}`,
+      r.used ? 'Besvarad' : 'Ej besvarad',
+      r.answeredAt ? new Date(r.answeredAt).toLocaleString('sv-SE') : ''
+    ]);
+
+    // Use semicolon (;) delimiter for Swedish Excel compatibility
+    const csvContent = [
+      headers.join(';'),
+      ...rows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(';'))
+    ].join('\r\n');
+
+    const fileName = `Inera_SUS_Mottagare_${filterName}_${selectedSurvey.name}.csv`;
+    downloadCsv(csvContent, fileName);
+  };
+
   // Export unique links list to CSV
   const exportUniqueLinksCsv = () => {
     if (!selectedSurvey) return;
     const headers = ["E-postadress", "Unik inbjudningslänk", "Omgång", "Svarsstatus", "Skapad datum", "Svarat datum"];
     const rows = respondents.map(r => [
       r.email,
-      `${window.location.origin}/?sus_survey=${selectedSurvey.id}&respondent=${r.id}`,
+      `${getBaseUrl()}/?sus_survey=${selectedSurvey.id}&respondent=${r.id}`,
       selectedSurvey.name,
       r.used ? 'Svarat' : 'Ej svarat',
       r.createdAt ? new Date(r.createdAt).toLocaleString('sv-SE') : '',
@@ -328,7 +486,7 @@ export default function SusAdminView() {
     const headers = ["E-postadress", "Unik inbjudningslänk", "Omgång"];
     const rows = unanswered.map(r => [
       r.email,
-      `${window.location.origin}/?sus_survey=${selectedSurvey.id}&respondent=${r.id}`,
+      `${getBaseUrl()}/?sus_survey=${selectedSurvey.id}&respondent=${r.id}`,
       selectedSurvey.name
     ]);
 
@@ -375,7 +533,7 @@ export default function SusAdminView() {
   // Detailed survey view mode
   if (mode === 'detail' && selectedSurvey) {
     const surveyProduct = products.find(p => p.id === selectedSurvey.productId);
-    const surveyUrl = `${window.location.origin}/?sus_survey=${selectedSurvey.id}`;
+    const surveyUrl = `${getBaseUrl()}/?sus_survey=${selectedSurvey.id}`;
     
     // Response analytics
     const completeResponses = responses.length;
@@ -395,7 +553,13 @@ export default function SusAdminView() {
           <button className="btn btn--tertiary flex items-center gap-2 text-sm" onClick={() => setMode('list')}>
             <ChevronLeft size={16} /> Tillbaka till omgångslistan
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => openEditModal(selectedSurvey)}
+              className="btn btn--s btn--secondary flex items-center gap-1.5"
+            >
+              <Edit3 size={15} /> Redigera omgång
+            </button>
             <button 
               onClick={() => handleToggleStatus(selectedSurvey)}
               className={`btn btn--s ${selectedSurvey.status === 'active' ? 'btn--secondary' : 'btn--primary'}`}
@@ -422,7 +586,20 @@ export default function SusAdminView() {
           </div>
           <p className="text-sm text-inera-neutral-30">
             Produkt: <span className="font-semibold text-inera-neutral-10">{surveyProduct?.name || selectedSurvey.productId}</span> | 
-            Period: <span className="font-semibold text-inera-neutral-10">{selectedSurvey.month}/{selectedSurvey.year}</span>
+            <span>
+              Svar {allResponsesCount[selectedSurvey.id] || 0}
+              {selectedSurvey.endCondition === 'maxResponses' && selectedSurvey.maxResponses ? `/${selectedSurvey.maxResponses}` : ''}
+              {selectedSurvey.endCondition === 'date' && selectedSurvey.endDate ? (
+                <>, stängs {(() => {
+                  try {
+                    const d = new Date(selectedSurvey.endDate);
+                    return isNaN(d.getTime()) ? 'ogiltigt datum' : d.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' });
+                  } catch (e) {
+                    return 'ogiltigt datum';
+                  }
+                })()}</>
+              ) : ''}
+            </span>
           </p>
         </div>
 
@@ -564,9 +741,39 @@ export default function SusAdminView() {
 
             {/* Respondent list */}
             <div className="border border-inera-secondary-90 rounded-xl p-5 bg-white">
-              <h3 className="font-bold text-inera-neutral-10 text-lg mb-4 flex items-center justify-between">
-                <span>Mottagare & Unika länkar ({respondents.length})</span>
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <h3 className="font-bold text-inera-neutral-10 text-lg">
+                  Mottagare & Unika länkar ({respondents.length})
+                </h3>
+                {respondents.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs font-bold text-inera-neutral-40 mr-1">Exportera Excel:</span>
+                    <button 
+                      onClick={() => exportRecipientsExcel('all')}
+                      className="btn btn--secondary btn--xs flex items-center gap-1 text-xs"
+                      title="Exportera alla mottagare och unika länkar i Excel-format"
+                    >
+                      <Download size={13} /> Alla ({respondents.length})
+                    </button>
+                    <button 
+                      onClick={() => exportRecipientsExcel('unanswered')}
+                      className="btn btn--secondary btn--xs flex items-center gap-1 text-xs"
+                      disabled={respondents.filter(r => !r.used).length === 0}
+                      title="Exportera enbart ej besvarade i Excel-format"
+                    >
+                      <Download size={13} /> Ej besvarade ({respondents.filter(r => !r.used).length})
+                    </button>
+                    <button 
+                      onClick={() => exportRecipientsExcel('answered')}
+                      className="btn btn--secondary btn--xs flex items-center gap-1 text-xs"
+                      disabled={respondents.filter(r => r.used).length === 0}
+                      title="Exportera enbart besvarade i Excel-format"
+                    >
+                      <Download size={13} /> Besvarade ({respondents.filter(r => r.used).length})
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {loadingDetails ? (
                 <p className="text-sm text-inera-neutral-40">Laddar respondenter...</p>
@@ -575,7 +782,7 @@ export default function SusAdminView() {
               ) : (
                 <div className="border border-inera-secondary-90 rounded-xl overflow-hidden divide-y divide-inera-secondary-90 max-h-80 overflow-y-auto">
                   {respondents.map(r => {
-                    const uniqueLink = `${window.location.origin}/?sus_survey=${selectedSurvey.id}&respondent=${r.id}`;
+                    const uniqueLink = `${getBaseUrl()}/?sus_survey=${selectedSurvey.id}&respondent=${r.id}`;
                     return (
                       <div key={r.id} className="p-3 bg-white flex items-center justify-between gap-4 text-sm hover:bg-inera-secondary-95 transition-colors">
                         <div className="min-w-0">
@@ -626,8 +833,249 @@ export default function SusAdminView() {
                     <span>SUS-poäng: <strong className="text-inera-primary-40">{res.susScore}</strong></span>
                     <span>{res.submittedAt ? new Date(res.submittedAt).toLocaleDateString('sv-SE') : ''}</span>
                   </div>
+      // Detail mode return closing
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Edit Survey Modal for Detail Mode */}
+        {isEditing && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
+            <div className="bg-white rounded-2xl border border-inera-secondary-90 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+              <div className="p-5 border-b border-inera-secondary-90 flex items-center justify-between bg-inera-secondary-95/40">
+                <div className="flex items-center gap-2">
+                  <Edit3 size={20} className="text-inera-primary-40" />
+                  <h3 className="text-lg font-bold font-display text-inera-neutral-10">
+                    Redigera SUS-omgång
+                  </h3>
+                </div>
+                <button 
+                  onClick={() => setIsEditing(false)}
+                  className="p-1 text-inera-neutral-40 hover:text-inera-neutral-10 rounded-lg hover:bg-inera-secondary-90"
+                  title="Stäng"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto space-y-6 flex-1 text-left">
+                {editError && (
+                  <div className="bg-inera-error-95 text-inera-error-40 border border-inera-error-40 p-3 rounded-lg text-sm flex items-start gap-2">
+                    <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                    <span>{editError}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-bold text-inera-neutral-20 mb-1">
+                    Omgångens namn (t.ex. vid stavfel eller justering)
+                  </label>
+                  <input 
+                    type="text" 
+                    className="input w-full" 
+                    value={editFormData.name || ''} 
+                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })} 
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-inera-neutral-20 mb-1">
+                    Kopplad produkt
+                  </label>
+                  <select 
+                    className="input w-full"
+                    value={editFormData.productId || ''}
+                    onChange={(e) => setEditFormData({ ...editFormData, productId: e.target.value })}
+                  >
+                    <option value="" disabled>Välj produkt...</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-inera-neutral-20 mb-1">Status</label>
+                    <select 
+                      className="input w-full"
+                      value={editFormData.status || 'active'}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as 'active' | 'inactive' })}
+                    >
+                      <option value="active">Aktiv</option>
+                      <option value="inactive">Inaktiv</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-inera-neutral-20 mb-1">Länktyp</label>
+                    <select 
+                      className="input w-full"
+                      value={editFormData.type || 'general'}
+                      onChange={(e) => setEditFormData({ ...editFormData, type: e.target.value as 'general' | 'unique' })}
+                    >
+                      <option value="general">Generell länk</option>
+                      <option value="unique">Unika länkar per respondent</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-inera-neutral-20 mb-1">Mätperiod</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-inera-neutral-40 mb-1">Månad (1-12)</label>
+                      <input 
+                        type="number" 
+                        min={1} 
+                        max={12} 
+                        className="input w-full" 
+                        value={editFormData.month || 1} 
+                        onChange={(e) => setEditFormData({ ...editFormData, month: parseInt(e.target.value) || 1 })} 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-inera-neutral-40 mb-1">År</label>
+                      <input 
+                        type="number" 
+                        className="input w-full" 
+                        value={editFormData.year || new Date().getFullYear()} 
+                        onChange={(e) => setEditFormData({ ...editFormData, year: parseInt(e.target.value) || new Date().getFullYear() })} 
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-inera-secondary-90">
+                  <label className="block text-sm font-bold text-inera-neutral-20 mb-2">Slutvillkor</label>
+                  <div className="space-y-3 mb-4">
+                    <label className="flex items-center gap-3 p-2.5 border border-inera-secondary-90 rounded-lg cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="editEndConditionDetail" 
+                        value="date" 
+                        checked={editFormData.endCondition === 'date'} 
+                        onChange={() => setEditFormData({ ...editFormData, endCondition: 'date' })} 
+                      />
+                      <span className="text-sm font-medium text-inera-neutral-10">Fast slutdatum</span>
+                    </label>
+                    <label className="flex items-center gap-3 p-2.5 border border-inera-secondary-90 rounded-lg cursor-pointer">
+                      <input 
+                        type="radio" 
+                        name="editEndConditionDetail" 
+                        value="maxResponses" 
+                        checked={editFormData.endCondition === 'maxResponses'} 
+                        onChange={() => setEditFormData({ ...editFormData, endCondition: 'maxResponses' })} 
+                      />
+                      <span className="text-sm font-medium text-inera-neutral-10">Maximalt antal svar</span>
+                    </label>
+                  </div>
+
+                  {editFormData.endCondition === 'date' ? (
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Slutdatum</label>
+                      <input 
+                        type="date" 
+                        className="input w-full" 
+                        value={editFormData.endDate || ''} 
+                        onChange={(e) => setEditFormData({ ...editFormData, endDate: e.target.value })} 
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Max antal svar</label>
+                      <input 
+                        type="number" 
+                        className="input w-full" 
+                        value={editFormData.maxResponses || ''} 
+                        onChange={(e) => setEditFormData({ ...editFormData, maxResponses: parseInt(e.target.value) || undefined })} 
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-inera-secondary-90 space-y-4">
+                  <label className="block text-sm font-bold text-inera-neutral-20">Anpassa enkättexter</label>
+                  <div>
+                    <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Introduktionstext</label>
+                    <textarea 
+                      className="input w-full text-sm h-20" 
+                      value={editFormData.introText || ''} 
+                      onChange={(e) => setEditFormData({ ...editFormData, introText: e.target.value })} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Fritextfråga etikett</label>
+                    <input 
+                      type="text" 
+                      className="input w-full text-sm" 
+                      value={editFormData.freeTextLabel || ''} 
+                      onChange={(e) => setEditFormData({ ...editFormData, freeTextLabel: e.target.value })} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Tacktext</label>
+                    <input 
+                      type="text" 
+                      className="input w-full text-sm" 
+                      value={editFormData.thankYouText || ''} 
+                      onChange={(e) => setEditFormData({ ...editFormData, thankYouText: e.target.value })} 
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-inera-secondary-90 space-y-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={editFormData.externalSurveyEnabled || false} 
+                      onChange={(e) => setEditFormData({ ...editFormData, externalSurveyEnabled: e.target.checked })} 
+                    />
+                    <span className="text-sm font-bold text-inera-neutral-20">Gå vidare till extern enkät</span>
+                  </label>
+
+                  {editFormData.externalSurveyEnabled && (
+                    <div className="space-y-3 pl-6 border-l-2 border-inera-primary-40/30">
+                      <div>
+                        <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Mål-URL</label>
+                        <input 
+                          type="url" 
+                          className="input w-full text-sm" 
+                          value={editFormData.externalSurveyUrl || ''} 
+                          onChange={(e) => setEditFormData({ ...editFormData, externalSurveyUrl: e.target.value })} 
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Knapptext</label>
+                        <input 
+                          type="text" 
+                          className="input w-full text-sm" 
+                          value={editFormData.externalSurveyBtnText || 'Fortsätt'} 
+                          onChange={(e) => setEditFormData({ ...editFormData, externalSurveyBtnText: e.target.value })} 
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-inera-secondary-90 flex justify-end gap-3 bg-inera-secondary-95/40">
+                <button 
+                  type="button" 
+                  onClick={() => setIsEditing(false)} 
+                  className="btn btn--tertiary"
+                >
+                  Avbryt
+                </button>
+                <button 
+                  type="button" 
+                  onClick={handleSaveEdit} 
+                  className="btn btn--primary flex items-center gap-2"
+                >
+                  <Check size={16} /> Spara ändringar
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -1021,9 +1469,21 @@ export default function SusAdminView() {
                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${survey.status === 'active' ? 'bg-inera-success-95 text-inera-success-40 border border-inera-success-40' : 'bg-inera-secondary-95 text-inera-neutral-40 border border-inera-secondary-90'}`}>
                       {survey.status === 'active' ? 'Aktiv' : 'Inaktiv'}
                     </span>
-                    <span className="text-xs font-semibold text-inera-neutral-40 uppercase">
-                      {survey.type === 'general' ? 'Generell' : 'Unik'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-inera-neutral-40 uppercase">
+                        {survey.type === 'general' ? 'Generell' : 'Unik'}
+                      </span>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(survey);
+                        }}
+                        className="p-1 text-inera-neutral-40 hover:text-inera-primary-40 hover:bg-inera-secondary-90 rounded transition-colors"
+                        title="Redigera omgång"
+                      >
+                        <Edit3 size={15} />
+                      </button>
+                    </div>
                   </div>
 
                   <h3 className="font-bold text-lg text-inera-neutral-10 mb-1">{survey.name}</h3>
@@ -1033,7 +1493,23 @@ export default function SusAdminView() {
                 </div>
 
                 <div className="pt-3 border-t border-inera-secondary-90 flex items-center justify-between text-xs text-inera-neutral-40">
-                  <span>Period: {survey.month}/{survey.year}</span>
+                  <div className="flex items-center gap-1">
+                    <Users size={14} className="text-inera-neutral-40" />
+                    <span>
+                      Svar {allResponsesCount[survey.id] || 0}
+                      {survey.endCondition === 'maxResponses' && survey.maxResponses ? `/${survey.maxResponses}` : ''}
+                      {survey.endCondition === 'date' && survey.endDate ? (
+                        <>, stängs {(() => {
+                          try {
+                            const d = new Date(survey.endDate);
+                            return isNaN(d.getTime()) ? 'ogiltigt datum' : d.toLocaleDateString('sv-SE', { day: 'numeric', month: 'long' });
+                          } catch (e) {
+                            return 'ogiltigt datum';
+                          }
+                        })()}</>
+                      ) : ''}
+                    </span>
+                  </div>
                   <span className="text-inera-primary-40 font-bold flex items-center gap-1">
                     Visa detaljer <ChevronRight size={14} />
                   </span>
@@ -1041,6 +1517,255 @@ export default function SusAdminView() {
               </div>
             );
           })}
+        </div>
+      )}
+      {/* Edit Survey Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-inera-secondary-90 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-inera-secondary-90 flex items-center justify-between bg-inera-secondary-95/40">
+              <div className="flex items-center gap-2">
+                <Edit3 size={20} className="text-inera-primary-40" />
+                <h3 className="text-lg font-bold font-display text-inera-neutral-10">
+                  Redigera SUS-omgång
+                </h3>
+              </div>
+              <button 
+                onClick={() => setIsEditing(false)}
+                className="p-1 text-inera-neutral-40 hover:text-inera-neutral-10 rounded-lg hover:bg-inera-secondary-90"
+                title="Stäng"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 flex-1">
+              {editError && (
+                <div className="bg-inera-error-95 text-inera-error-40 border border-inera-error-40 p-3 rounded-lg text-sm flex items-start gap-2">
+                  <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              {/* Omgångsnamn */}
+              <div>
+                <label className="block text-sm font-bold text-inera-neutral-20 mb-1">
+                  Omgångens namn (t.ex. vid stavfel eller justering)
+                </label>
+                <input 
+                  type="text" 
+                  className="input w-full" 
+                  value={editFormData.name || ''} 
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })} 
+                />
+              </div>
+
+              {/* Produkt */}
+              <div>
+                <label className="block text-sm font-bold text-inera-neutral-20 mb-1">
+                  Kopplad produkt
+                </label>
+                <select 
+                  className="input w-full"
+                  value={editFormData.productId || ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, productId: e.target.value })}
+                >
+                  <option value="" disabled>Välj produkt...</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status & Typ */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-inera-neutral-20 mb-1">Status</label>
+                  <select 
+                    className="input w-full"
+                    value={editFormData.status || 'active'}
+                    onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as 'active' | 'inactive' })}
+                  >
+                    <option value="active">Aktiv</option>
+                    <option value="inactive">Inaktiv</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-inera-neutral-20 mb-1">Länktyp</label>
+                  <select 
+                    className="input w-full"
+                    value={editFormData.type || 'general'}
+                    onChange={(e) => setEditFormData({ ...editFormData, type: e.target.value as 'general' | 'unique' })}
+                  >
+                    <option value="general">Generell länk</option>
+                    <option value="unique">Unika länkar per respondent</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Period */}
+              <div>
+                <label className="block text-sm font-bold text-inera-neutral-20 mb-1">Mätperiod</label>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-inera-neutral-40 mb-1">Månad (1-12)</label>
+                    <input 
+                      type="number" 
+                      min={1} 
+                      max={12} 
+                      className="input w-full" 
+                      value={editFormData.month || 1} 
+                      onChange={(e) => setEditFormData({ ...editFormData, month: parseInt(e.target.value) || 1 })} 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-inera-neutral-40 mb-1">År</label>
+                    <input 
+                      type="number" 
+                      className="input w-full" 
+                      value={editFormData.year || new Date().getFullYear()} 
+                      onChange={(e) => setEditFormData({ ...editFormData, year: parseInt(e.target.value) || new Date().getFullYear() })} 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Slutvillkor */}
+              <div className="pt-4 border-t border-inera-secondary-90">
+                <label className="block text-sm font-bold text-inera-neutral-20 mb-2">Slutvillkor</label>
+                <div className="space-y-3 mb-4">
+                  <label className="flex items-center gap-3 p-2.5 border border-inera-secondary-90 rounded-lg cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="editEndCondition" 
+                      value="date" 
+                      checked={editFormData.endCondition === 'date'} 
+                      onChange={() => setEditFormData({ ...editFormData, endCondition: 'date' })} 
+                    />
+                    <span className="text-sm font-medium text-inera-neutral-10">Fast slutdatum</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-2.5 border border-inera-secondary-90 rounded-lg cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="editEndCondition" 
+                      value="maxResponses" 
+                      checked={editFormData.endCondition === 'maxResponses'} 
+                      onChange={() => setEditFormData({ ...editFormData, endCondition: 'maxResponses' })} 
+                    />
+                    <span className="text-sm font-medium text-inera-neutral-10">Maximalt antal svar</span>
+                  </label>
+                </div>
+
+                {editFormData.endCondition === 'date' ? (
+                  <div>
+                    <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Slutdatum</label>
+                    <input 
+                      type="date" 
+                      className="input w-full" 
+                      value={editFormData.endDate || ''} 
+                      onChange={(e) => setEditFormData({ ...editFormData, endDate: e.target.value })} 
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Max antal svar</label>
+                    <input 
+                      type="number" 
+                      className="input w-full" 
+                      value={editFormData.maxResponses || ''} 
+                      onChange={(e) => setEditFormData({ ...editFormData, maxResponses: parseInt(e.target.value) || undefined })} 
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Enkättexter */}
+              <div className="pt-4 border-t border-inera-secondary-90 space-y-4">
+                <label className="block text-sm font-bold text-inera-neutral-20">Anpassa enkättexter</label>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Introduktionstext</label>
+                  <textarea 
+                    className="input w-full text-sm h-20" 
+                    value={editFormData.introText || ''} 
+                    onChange={(e) => setEditFormData({ ...editFormData, introText: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Fritextfråga etikett</label>
+                  <input 
+                    type="text" 
+                    className="input w-full text-sm" 
+                    value={editFormData.freeTextLabel || ''} 
+                    onChange={(e) => setEditFormData({ ...editFormData, freeTextLabel: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Tacktext</label>
+                  <input 
+                    type="text" 
+                    className="input w-full text-sm" 
+                    value={editFormData.thankYouText || ''} 
+                    onChange={(e) => setEditFormData({ ...editFormData, thankYouText: e.target.value })} 
+                  />
+                </div>
+              </div>
+
+              {/* Extern enkät */}
+              <div className="pt-4 border-t border-inera-secondary-90 space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    checked={editFormData.externalSurveyEnabled || false} 
+                    onChange={(e) => setEditFormData({ ...editFormData, externalSurveyEnabled: e.target.checked })} 
+                  />
+                  <span className="text-sm font-bold text-inera-neutral-20">Gå vidare till extern enkät</span>
+                </label>
+
+                {editFormData.externalSurveyEnabled && (
+                  <div className="space-y-3 pl-6 border-l-2 border-inera-primary-40/30">
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Mål-URL</label>
+                      <input 
+                        type="url" 
+                        className="input w-full text-sm" 
+                        value={editFormData.externalSurveyUrl || ''} 
+                        onChange={(e) => setEditFormData({ ...editFormData, externalSurveyUrl: e.target.value })} 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Knapptext</label>
+                      <input 
+                        type="text" 
+                        className="input w-full text-sm" 
+                        value={editFormData.externalSurveyBtnText || 'Fortsätt'} 
+                        onChange={(e) => setEditFormData({ ...editFormData, externalSurveyBtnText: e.target.value })} 
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-inera-secondary-90 flex justify-end gap-3 bg-inera-secondary-95/40">
+              <button 
+                type="button" 
+                onClick={() => setIsEditing(false)} 
+                className="btn btn--tertiary"
+              >
+                Avbryt
+              </button>
+              <button 
+                type="button" 
+                onClick={handleSaveEdit} 
+                className="btn btn--primary flex items-center gap-2"
+              >
+                <Check size={16} /> Spara ändringar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

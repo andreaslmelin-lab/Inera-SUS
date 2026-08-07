@@ -24,13 +24,26 @@ const RawDataView = () => {
         const measurements = measurementsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Measurement));
 
         const responsesSnap = await getDocs(collection(db, 'responses'));
-        const responses = responsesSnap.docs.map(d => ({ id: d.id, ...d.data() } as ResponseData));
+        const csvResponses = responsesSnap.docs.map(d => ({ id: d.id, ...d.data() } as ResponseData));
 
-        let totalScore = 0;
-        let totalCount = 0;
-        let responseRateAvg = 100;
+        const susResponsesSnap = await getDocs(collection(db, 'susResponses'));
+        const susResponses = susResponsesSnap.docs.map(d => {
+          const data = d.data();
+          const subDate = data.createdAt ? new Date(data.createdAt) : (data.completedAt ? new Date(data.completedAt) : new Date());
+          return {
+            id: d.id,
+            measurementId: data.surveyId || 'survey-round',
+            productId: data.productId || 'prod-general',
+            variantName: data.variantName || 'Egna SUS-mätningar',
+            susScore: Number(data.susScore) || 0,
+            answers: data.answers || [],
+            comment: data.comment || '',
+            submitDate: isNaN(subDate.getTime()) ? new Date() : subDate
+          } as ResponseData;
+        });
 
-        // Calculate overall score from responses
+        const responses = [...csvResponses, ...susResponses];
+
         let totalScoreSum = 0;
         responses.forEach(r => {
           totalScoreSum += r.susScore;
@@ -57,28 +70,40 @@ const RawDataView = () => {
           responses: data.count
         }));
 
-        // Services (formerly products)
-        const services = products.map(product => {
-           const prodResponses = responses.filter(r => r.productId === product.id);
-           const serviceTotalScore = prodResponses.reduce((sum, r) => sum + r.susScore, 0);
-           const serviceCount = prodResponses.length;
+        // Product hierarchy export
+        const exportProducts = products.map(product => {
+           const prodResponses = responses.filter(r => r.productId === product.id || r.productId === product.name);
+           const prodTotalScore = prodResponses.reduce((sum, r) => sum + r.susScore, 0);
+           const prodCount = prodResponses.length;
            return {
-             serviceId: product.id,
-             serviceName: product.name,
-             susScore: serviceCount > 0 ? Math.round(serviceTotalScore / serviceCount) : 0,
-             responsesCount: serviceCount,
-             wcagPassRate: null,
-             criticalWcagErrors: null
+             productId: product.id,
+             productName: product.name,
+             teamId: product.teamId || 'team-unassigned',
+             teamName: product.teamName || 'Omappat team',
+             trainId: product.trainId || 'train-unassigned',
+             trainName: product.trainName || 'Omappade',
+             susScore: prodCount > 0 ? Math.round(prodTotalScore / prodCount) : (product.susScore || 0),
+             responsesCount: prodCount
            };
         });
 
         const events = responses.map(r => {
            const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Övriga' : (r.variantName || 'Övriga');
+           let dateIso = new Date().toISOString();
+           if (r.submitDate) {
+             if ((r.submitDate as any).toDate) {
+               dateIso = (r.submitDate as any).toDate().toISOString();
+             } else if (r.submitDate instanceof Date) {
+               dateIso = r.submitDate.toISOString();
+             } else if (typeof r.submitDate === 'string') {
+               dateIso = new Date(r.submitDate).toISOString();
+             }
+           }
            return {
              eventId: r.id,
-             timestamp: r.submitDate ? (r.submitDate as any).toDate().toISOString() : new Date().toISOString(),
+             timestamp: dateIso,
              eventType: "SUS_SURVEY_COMPLETED",
-             targetServiceId: r.productId,
+             targetProductId: r.productId,
              productName: mappings[rawName] || rawName,
              scoreGiven: r.susScore
            };
@@ -87,20 +112,21 @@ const RawDataView = () => {
         const payload = {
           "$schema": "https://inera-admin.se/schemas/ux-bigdata-v1.json",
           "source": "inera-sus",
+          "sourceKey": "inera-sus",
           "timestamp": new Date().toISOString(),
           "organization": "Inera AB",
           "metrics": {
             "score": overallScore,
             "grade": getSusGrade(overallScore),
-            "evaluationsCount": measurements.length,
-            "responseRate": responseRateAvg,
+            "evaluationsCount": measurements.length + susResponses.length,
+            "responseRate": 100,
             "productsCount": productMetrics.length,
             "products": productMetrics
           },
           "granularData": {
             "individuals": [],
             "teams": [],
-            "services": services,
+            "products": exportProducts,
             "events": events
           }
         };

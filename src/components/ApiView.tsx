@@ -8,6 +8,9 @@ const ApiView = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ success?: boolean; message?: string } | null>(null);
 
+  const [endpoint, setEndpoint] = useState('https://inera-ux-dashboard.vercel.app/api/sync-metrics');
+  const [apiToken, setApiToken] = useState('inera_ux_token_11am0nao');
+
   const [jsonPayload, setJsonPayload] = useState(JSON.stringify({
     "source": "inera-sus",
     "timestamp": new Date().toISOString(),
@@ -67,16 +70,17 @@ const ApiView = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Token': apiToken,
         },
         body: JSON.stringify(parsed)
       });
       const data = await res.json();
       setResponse(JSON.stringify(data, null, 2));
-      if (res.ok) {
+      if (res.ok && data.success !== false) {
         setSyncStatus({ success: true, message: 'Data synkad med Inera UX Dashboard' });
       } else {
         console.error("API test error:", data);
-        setSyncStatus({ success: false, message: 'Kunde inte synka. Se konsolen.' });
+        setSyncStatus({ success: false, message: data.error || 'Kunde inte synka. Se konsolen.' });
       }
     } catch (err: any) {
       console.error("Fel vid testanrop:", err);
@@ -98,8 +102,10 @@ const ApiView = () => {
       <div className="card p-6 shadow-md border-inera-secondary-90 bg-white">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-xl font-bold font-display text-inera-neutral-10">Inera UX Dashboard Synkronisering</h2>
-            <p className="text-sm text-inera-neutral-40 mt-1">Automatisk bakgrundssynkronisering av beräknade SUS-mätvärden till den centrala mätplattformen.</p>
+            <h2 className="text-xl font-bold font-display text-inera-neutral-10">Inera UX Dashboard Synkronisering (PUSH)</h2>
+            <p className="text-sm text-inera-neutral-40 mt-1">
+              Aktiv PUSH-integration: Vid sparande av nya SUS-mätvärden görs automatiska HTTP POST-anrop med nyckeltal till Inera UX Dashboard.
+            </p>
           </div>
           <button 
             onClick={handleManualSync}
@@ -126,13 +132,14 @@ const ApiView = () => {
             <label className="block text-xs font-bold text-inera-neutral-40 mb-1">SYNC API ENDPOINT (POST)</label>
             <div className="flex gap-2">
               <input 
-                readOnly 
-                value="https://inera-ux-dashboard.vercel.app/api/sync-metrics" 
-                className="flex-grow p-2 border border-inera-secondary-90 rounded text-sm bg-inera-secondary-95 font-mono text-inera-neutral-10" 
+                type="text"
+                value={endpoint} 
+                onChange={(e) => setEndpoint(e.target.value)}
+                className="flex-grow p-2 border border-inera-secondary-90 rounded text-sm bg-inera-secondary-95 font-mono text-inera-neutral-10 focus:outline-none focus:ring-1 focus:ring-inera-primary-40" 
               />
               <button 
-                onClick={() => navigator.clipboard.writeText("https://inera-ux-dashboard.vercel.app/api/sync-metrics")}
-                className="p-2 border border-inera-secondary-90 rounded bg-white hover:bg-inera-secondary-95 text-inera-neutral-20"
+                onClick={() => navigator.clipboard.writeText(endpoint)}
+                className="p-2 border border-inera-secondary-90 rounded bg-white hover:bg-inera-secondary-95 text-inera-neutral-20 shrink-0"
                 title="Kopiera URL"
               >
                 <Copy size={16} />
@@ -144,13 +151,14 @@ const ApiView = () => {
             <label className="block text-xs font-bold text-inera-neutral-40 mb-1">X-API-TOKEN (HEADER)</label>
             <div className="flex gap-2">
               <input 
-                readOnly 
-                value="inera_ux_token_11am0nao" 
-                className="flex-grow p-2 border border-inera-secondary-90 rounded text-sm bg-inera-secondary-95 font-mono text-inera-neutral-10" 
+                type="text"
+                value={apiToken} 
+                onChange={(e) => setApiToken(e.target.value)}
+                className="flex-grow p-2 border border-inera-secondary-90 rounded text-sm bg-inera-secondary-95 font-mono text-inera-neutral-10 focus:outline-none focus:ring-1 focus:ring-inera-primary-40" 
               />
               <button 
-                onClick={() => navigator.clipboard.writeText("inera_ux_token_11am0nao")}
-                className="p-2 border border-inera-secondary-90 rounded bg-white hover:bg-inera-secondary-95 text-inera-neutral-20"
+                onClick={() => navigator.clipboard.writeText(apiToken)}
+                className="p-2 border border-inera-secondary-90 rounded bg-white hover:bg-inera-secondary-95 text-inera-neutral-20 shrink-0"
                 title="Kopiera Token"
               >
                 <Copy size={16} />
@@ -162,13 +170,13 @@ const ApiView = () => {
 
       {/* JSON Payload Spec & Test */}
       <div className="card p-6 shadow-md border-inera-secondary-90 bg-white">
-        <h2 className="text-xl font-bold font-display text-inera-neutral-10 mb-2">REST POST Payload Format</h2>
-        <p className="text-sm text-inera-neutral-40 mb-4">Struktur för JSON-payload som skickas vid synkronisering av SUS-mätvärden:</p>
+        <h2 className="text-xl font-bold font-display text-inera-neutral-10 mb-2">Rådata / JSON Payload</h2>
+        <p className="text-sm text-inera-neutral-40 mb-4">Levande JSON-payload som skickas via HTTP POST till Inera UX Dashboard (source: "inera-sus"):</p>
 
         <textarea 
           value={jsonPayload}
           onChange={(e) => setJsonPayload(e.target.value)}
-          className="w-full h-56 p-4 bg-inera-neutral-10 text-white font-mono text-sm rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-inera-primary-40/30"
+          className="w-full h-64 p-4 bg-inera-neutral-10 text-white font-mono text-sm rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-inera-primary-40/30"
         />
 
         <div className="flex gap-3">
@@ -193,4 +201,5 @@ const ApiView = () => {
 };
 
 export default ApiView;
+
 

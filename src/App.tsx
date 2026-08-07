@@ -12,11 +12,12 @@ import {
 } from 'lucide-react';
 import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from './firebase';
 import { Product, ProductService, Measurement, MeasurementService, ResponseData, Variant } from './services';
+import { loadProductMappings } from './services/catalogMappingService';
 import { triggerSusMetricsSync } from './services/syncService';
 import { cn, getSusGrade, calculateMedian, getMedianExplanation } from './lib/utils';
 import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
-import { doc, getDoc, setDoc, updateDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, query, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import ApiView from './components/ApiView';
 import RawDataView from './components/RawDataView';
@@ -210,6 +211,8 @@ const AdminView = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [userToDelete, setUserToDelete] = useState<any | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -236,6 +239,20 @@ const AdminView = () => {
       fetchUsers();
     } catch(err: any) {
       setError(err.message || 'Kunde inte blockera/avblockera användare');
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
+    try {
+      await deleteDoc(doc(db, 'users', userToDelete.id));
+      setUserToDelete(null);
+      await fetchUsers();
+    } catch(err: any) {
+      setError(err.message || 'Kunde inte radera användaren');
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -325,12 +342,22 @@ const AdminView = () => {
                         )}
                       </td>
                       <td className="py-3 px-2">
-                        <button 
-                          onClick={() => toggleBlock(u.id, !!u.isBlocked)}
-                          className={cn("btn btn--s", u.isBlocked ? "btn--secondary" : "btn--destructive")}
-                        >
-                          {u.isBlocked ? 'Avblockera' : 'Blockera'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => toggleBlock(u.id, !!u.isBlocked)}
+                            className={cn("btn btn--s", u.isBlocked ? "btn--secondary" : "btn--tertiary")}
+                          >
+                            {u.isBlocked ? 'Avblockera' : 'Blockera'}
+                          </button>
+                          <button 
+                            onClick={() => setUserToDelete(u)}
+                            className="btn btn--s btn--destructive flex items-center gap-1"
+                            title="Radera användare"
+                          >
+                            <Trash2 size={13} />
+                            Radera
+                          </button>
+                        </div>
                       </td>
                     </motion.tr>
                   ))}
@@ -338,6 +365,39 @@ const AdminView = () => {
                 </motion.tbody>
               </table>
             </div>
+
+            {/* Delete User Warning Modal */}
+            {userToDelete && (
+              <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                <div className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4">
+                  <div className="flex items-center gap-3 text-inera-error-40">
+                    <AlertCircle size={24} />
+                    <h3 className="text-lg font-bold font-display text-inera-neutral-10">Radera användare</h3>
+                  </div>
+                  <p className="text-sm text-inera-neutral-30">
+                    Är du säker på att du vill radera användaren <strong className="text-inera-neutral-10">{userToDelete.email}</strong>? 
+                    Användarens konto tas bort permanent från systemet. Denna åtgärd kan inte ångras.
+                  </p>
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button 
+                      onClick={() => setUserToDelete(null)}
+                      disabled={isDeletingUser}
+                      className="btn btn--m btn--secondary"
+                    >
+                      Avbryt
+                    </button>
+                    <button 
+                      onClick={handleDeleteUser}
+                      disabled={isDeletingUser}
+                      className="btn btn--m btn--destructive flex items-center gap-2"
+                    >
+                      {isDeletingUser ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                      {isDeletingUser ? 'Raderar...' : 'Ja, radera användaren'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
         
@@ -479,9 +539,211 @@ export default function App() {
   const [manualDate, setManualDate] = useState<string>('');
   const [isSavingManual, setIsSavingManual] = useState<boolean>(false);
   
+  // Real-time collections & product mappings
+  const [susResponsesList, setSusResponsesList] = useState<any[]>([]);
+  const [allRawResponsesList, setAllRawResponsesList] = useState<any[]>([]);
+  const [productMappings, setProductMappings] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (user) {
+      loadProductMappings().then(setProductMappings);
+
+      const qSus = query(collection(db, 'susResponses'));
+      const unsubSus = onSnapshot(qSus, (snap) => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setSusResponsesList(docs);
+      });
+
+      const qResp = query(collection(db, 'responses'));
+      const unsubResp = onSnapshot(qResp, (snap) => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setAllRawResponsesList(docs);
+      });
+
+      return () => {
+        unsubSus();
+        unsubResp();
+      };
+    }
+  }, [user]);
+
+  const liveMetricsByProductId = useMemo(() => {
+    const map: Record<string, { scores: number[]; latestDate?: Date; isActive?: boolean }> = {};
+
+    const pIdSet = new Set(products.map(p => p.id));
+    const pNameMap = new Map<string, string>();
+    products.forEach(p => {
+      pNameMap.set(p.name.toLowerCase().trim(), p.id);
+    });
+
+    const processItem = (item: any, fromActiveSurvey: boolean = false) => {
+      const score = Number(item.susScore);
+      if (isNaN(score)) return;
+
+      const rawProdId = (item.productId || '').trim();
+      const rawVariant = (item.variantName || '').trim();
+
+      let targetId: string | null = null;
+
+      if (rawProdId && pIdSet.has(rawProdId)) {
+        targetId = rawProdId;
+      } else if (rawVariant && pNameMap.has(rawVariant.toLowerCase())) {
+        targetId = pNameMap.get(rawVariant.toLowerCase())!;
+      } else if (rawProdId && pNameMap.has(rawProdId.toLowerCase())) {
+        targetId = pNameMap.get(rawProdId.toLowerCase())!;
+      } else {
+        const mappedName = productMappings[rawVariant] || productMappings[rawProdId];
+        if (mappedName && pNameMap.has(mappedName.toLowerCase().trim())) {
+          targetId = pNameMap.get(mappedName.toLowerCase().trim())!;
+        }
+      }
+
+      // Step 3: Match by raw Product ID (most common)
+      if (!targetId && rawProdId && pIdSet.has(rawProdId)) {
+        targetId = rawProdId;
+      }
+
+      // Step 4: Match by Name (fallback)
+      if (!targetId && rawProdId) {
+        const foundId = pNameMap.get(rawProdId.toLowerCase().trim());
+        if (foundId) targetId = foundId;
+      }
+
+      if (targetId) {
+        if (!map[targetId]) {
+          map[targetId] = { scores: [], isActive: false };
+        }
+        map[targetId].scores.push(score);
+        if (fromActiveSurvey) map[targetId].isActive = true;
+
+        const rawDt = item.submitDate || item.submittedAt || item.createdAt;
+        if (rawDt) {
+          const dt = new Date(rawDt);
+          if (!isNaN(dt.getTime())) {
+            if (!map[targetId].latestDate || dt > map[targetId].latestDate!) {
+              map[targetId].latestDate = dt;
+            }
+          }
+        }
+      } else {
+        // Capture unmapped responses in a special bucket to ensure total count (1386) is correct
+        const unmappedId = 'unmapped-responses';
+        if (!map[unmappedId]) {
+          map[unmappedId] = { scores: [], isActive: false };
+        }
+        map[unmappedId].scores.push(score);
+        if (fromActiveSurvey) map[unmappedId].isActive = true;
+        
+        const rawDt = item.submitDate || item.submittedAt || item.createdAt;
+        if (rawDt) {
+          const dt = new Date(rawDt);
+          if (!isNaN(dt.getTime())) {
+            if (!map[unmappedId].latestDate || dt > map[unmappedId].latestDate!) {
+              map[unmappedId].latestDate = dt;
+            }
+          }
+        }
+      }
+    };
+
+    allRawResponsesList.forEach(item => processItem(item, false));
+    susResponsesList.forEach(item => processItem(item, true));
+
+    return map;
+  }, [products, allRawResponsesList, susResponsesList, productMappings]);
+  
   // Advanced Filters
+  const [selectedTrainFilter, setSelectedTrainFilter] = useState<string>('Alla');
+  const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>('Alla');
   const [susRange, setSusRange] = useState<{ min: number; max: number }>({ min: 0, max: 100 });
   const [categoryFilter, setCategoryFilter] = useState<string>('Alla');
+
+  const allMappedProducts = useMemo(() => {
+    const realProductsOnly = products;
+    const allProductIds = new Set([
+      ...realProductsOnly.map(p => p.id),
+      ...Object.keys(liveMetricsByProductId)
+    ]);
+    
+    return Array.from(allProductIds).map(id => {
+      const p = realProductsOnly.find(prod => prod.id === id) || {
+        id,
+        name: id === 'unmapped-responses' ? 'Ej mappade svar' : id.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        type: 'product',
+        trainName: 'Ej mappade',
+        teamName: 'Ej mappade'
+      } as Product;
+      
+      const liveData = liveMetricsByProductId[p.id];
+      if (liveData && liveData.scores.length > 0) {
+        const scores = liveData.scores;
+        const total = scores.length;
+        const sum = scores.reduce((a, b) => a + b, 0);
+        const avg = Math.round((sum / total) * 10) / 10;
+        const med = calculateMedian(scores);
+        return {
+          ...p,
+          latest: {
+            averageScore: avg,
+            medianScore: med,
+            responseCount: total,
+            date: liveData.latestDate || new Date(),
+            isActive: liveData.isActive
+          }
+        };
+      }
+
+      if (selectedMeasurementId === 'all') {
+        const productMeasurements = allMeasurements.filter(m => m.productId === p.id);
+        if (productMeasurements.length > 0) {
+          const totalResponses = productMeasurements.reduce((acc, m) => acc + m.responseCount, 0);
+          const avgScore = productMeasurements.reduce((acc, m) => acc + (m.averageScore * m.responseCount), 0) / totalResponses;
+          return { 
+            ...p, 
+            latest: { 
+              averageScore: avgScore, 
+              responseCount: totalResponses,
+              date: productMeasurements[0].date 
+            } 
+          } as any;
+        }
+      } else {
+        const latest = latestMeasurements.find(m => m.productId === p.id);
+        if (latest) return { ...p, latest };
+      }
+
+      if (p.susScore !== undefined && p.susScore > 0) {
+        return {
+          ...p,
+          latest: {
+            averageScore: p.susScore,
+            medianScore: p.susScore,
+            responseCount: 0,
+            date: new Date()
+          }
+        };
+      }
+
+      return { ...p, latest: undefined };
+    });
+  }, [products, liveMetricsByProductId, allMeasurements, latestMeasurements, selectedMeasurementId]);
+
+  const availableTrains = useMemo(() => {
+    const set = new Set<string>();
+    allMappedProducts.forEach(p => {
+      if (p.trainName) set.add(p.trainName);
+    });
+    return ['Alla', ...Array.from(set).sort()];
+  }, [allMappedProducts]);
+
+  const availableTeams = useMemo(() => {
+    const set = new Set<string>();
+    allMappedProducts.forEach(p => {
+      if (selectedTrainFilter !== 'Alla' && p.trainName !== selectedTrainFilter) return;
+      if (p.teamName) set.add(p.teamName);
+    });
+    return ['Alla', ...Array.from(set).sort()];
+  }, [allMappedProducts, selectedTrainFilter]);
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'score'; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
   const [variantSort, setVariantSort] = useState<{ key: 'name' | 'score'; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
@@ -627,37 +889,6 @@ export default function App() {
       }
     }
   }, [user, view, products, selectedMeasurementId, allMeasurements]);
-
-  const companyStats = useMemo(() => {
-    if (latestMeasurements.length === 0) return { avg: 0, totalResponses: 0 };
-    
-    if (selectedMeasurementId === 'all') {
-      // Group by product to get the average of product averages
-      const productGroups: Record<string, { sum: number, count: number, totalResponses: number }> = {};
-      latestMeasurements.forEach(m => {
-        if (!productGroups[m.productId]) productGroups[m.productId] = { sum: 0, count: 0, totalResponses: 0 };
-        productGroups[m.productId].sum += m.averageScore;
-        productGroups[m.productId].count++;
-        productGroups[m.productId].totalResponses += m.responseCount;
-      });
-      
-      const productAverages = Object.values(productGroups).map(g => g.sum / g.count);
-      const totalResponses = Object.values(productGroups).reduce((acc, g) => acc + g.totalResponses, 0);
-      const avg = productAverages.length > 0 ? productAverages.reduce((acc, v) => acc + v, 0) / productAverages.length : 0;
-      
-      return {
-        avg: Math.round(avg * 10) / 10,
-        totalResponses
-      };
-    } else {
-      const totalResponses = latestMeasurements.reduce((acc, m) => acc + m.responseCount, 0);
-      const sumOfAverages = latestMeasurements.reduce((acc, m) => acc + m.averageScore, 0);
-      return { 
-        avg: Math.round((sumOfAverages / latestMeasurements.length) * 10) / 10, 
-        totalResponses 
-      };
-    }
-  }, [latestMeasurements, selectedMeasurementId]);
 
   const boxStats = useMemo(() => {
     if (responses.length === 0) return null;
@@ -844,27 +1075,17 @@ export default function App() {
   }, [filteredResponses]);
 
   const filteredProducts = useMemo(() => {
-    let result = products.map(p => {
-      if (selectedMeasurementId === 'all') {
-        const productMeasurements = allMeasurements.filter(m => m.productId === p.id);
-        if (productMeasurements.length === 0) return { ...p, latest: undefined };
-        
-        const totalResponses = productMeasurements.reduce((acc, m) => acc + m.responseCount, 0);
-        const avgScore = productMeasurements.reduce((acc, m) => acc + (m.averageScore * m.responseCount), 0) / totalResponses;
-        
-        return { 
-          ...p, 
-          latest: { 
-            averageScore: avgScore, 
-            responseCount: totalResponses,
-            date: productMeasurements[0].date 
-          } 
-        } as any;
-      } else {
-        const latest = latestMeasurements.find(m => m.productId === p.id);
-        return { ...p, latest };
-      }
-    });
+    let result = [...allMappedProducts];
+
+    // Train filter
+    if (selectedTrainFilter !== 'Alla') {
+      result = result.filter(p => (p.trainName || 'Ej mappade') === selectedTrainFilter);
+    }
+
+    // Team filter
+    if (selectedTeamFilter !== 'Alla') {
+      result = result.filter(p => (p.teamName || 'Ej mappade') === selectedTeamFilter);
+    }
 
     // Search term
     if (searchTerm) {
@@ -908,7 +1129,92 @@ export default function App() {
     });
 
     return result;
-  }, [products, searchTerm, latestMeasurements, susRange, categoryFilter, dateRange, sortConfig]);
+  }, [products, searchTerm, latestMeasurements, susRange, categoryFilter, dateRange, sortConfig, selectedTrainFilter, selectedTeamFilter]);
+
+  const groupedHierarchy = useMemo(() => {
+    const trainMap: Record<string, {
+      trainName: string;
+      totalScoreSum: number;
+      responseCount: number;
+      productCount: number;
+      teams: Record<string, {
+        teamName: string;
+        totalScoreSum: number;
+        responseCount: number;
+        productCount: number;
+        products: typeof filteredProducts;
+      }>;
+    }> = {};
+
+    filteredProducts.forEach(p => {
+      const train = p.trainName || 'Omappade tåg';
+      const team = p.teamName || 'Omappat team';
+
+      if (!trainMap[train]) {
+        trainMap[train] = {
+          trainName: train,
+          totalScoreSum: 0,
+          responseCount: 0,
+          productCount: 0,
+          teams: {}
+        };
+      }
+
+      if (!trainMap[train].teams[team]) {
+        trainMap[train].teams[team] = {
+          teamName: team,
+          totalScoreSum: 0,
+          responseCount: 0,
+          productCount: 0,
+          products: []
+        };
+      }
+
+      const score = p.latest?.averageScore || 0;
+      const responses = p.latest?.responseCount || 0;
+
+      trainMap[train].productCount++;
+      trainMap[train].responseCount += responses;
+      trainMap[train].totalScoreSum += (score * (responses || 1));
+
+      trainMap[train].teams[team].productCount++;
+      trainMap[train].teams[team].responseCount += responses;
+      trainMap[train].teams[team].totalScoreSum += (score * (responses || 1));
+      trainMap[train].teams[team].products.push(p);
+    });
+
+    return Object.values(trainMap).map(tr => ({
+      ...tr,
+      avgScore: tr.responseCount > 0 ? Math.round((tr.totalScoreSum / tr.responseCount) * 10) / 10 : 0,
+      teams: Object.values(tr.teams).map(tm => ({
+        ...tm,
+        avgScore: tm.responseCount > 0 ? Math.round((tm.totalScoreSum / tm.responseCount) * 10) / 10 : 0
+      }))
+    }));
+  }, [filteredProducts]);
+
+  const companyStats = useMemo(() => {
+    const prods = filteredProducts;
+    if (prods.length === 0) return { avg: 0, totalResponses: 0, totalProducts: 0 };
+
+    let totalScoreSum = 0;
+    let totalResponses = 0;
+
+    prods.forEach(p => {
+      if (p.latest) {
+        const resp = p.latest.responseCount || 1;
+        totalScoreSum += p.latest.averageScore * resp;
+        totalResponses += (p.latest.responseCount || 0);
+      }
+    });
+
+    const avg = totalResponses > 0 ? Math.round((totalScoreSum / totalResponses) * 10) / 10 : 0;
+    return {
+      avg,
+      totalResponses,
+      totalProducts: prods.length
+    };
+  }, [filteredProducts]);
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
@@ -1079,83 +1385,94 @@ export default function App() {
         <main className="min-w-0">
           {activeTab === 'sus_admin' && <SusAdminView />}
           {activeTab === 'dashboard' && (
-            <div className="bg-inera-secondary-95 border border-inera-secondary-90 rounded-2xl p-6 mb-8 shadow-sm">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                <div>
-                  <h2 className="text-xl font-bold font-display text-inera-neutral-10 flex items-center gap-2">
-                    <LayoutDashboard size={24} className="text-inera-primary-40" />
-                    Dashboard & Insikter
-                  </h2>
-                  <p className="text-xs text-inera-neutral-40 mt-1 uppercase tracking-wider font-semibold">
-                    {view === 'company' ? 'Aggregerad vy för Inera' : `Analys för: ${products.find(p => p.id === selectedProductId)?.name || 'Vald tjänst'}`}
-                  </p>
+            <div className="bg-inera-secondary-95 border border-inera-secondary-90 rounded-2xl p-4 mb-8 shadow-sm">
+              <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-inera-secondary-90 w-full justify-between lg:justify-start">
+                <div className="flex flex-col gap-1 px-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Filter: Tåg</label>
+                  <select 
+                    value={selectedTrainFilter}
+                    onChange={(e) => {
+                      setSelectedTrainFilter(e.target.value);
+                      setSelectedTeamFilter('Alla');
+                      setView('company');
+                      setSelectedProductId(null);
+                      setSelectedVariant('Alla');
+                    }}
+                    className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
+                  >
+                    {availableTrains.map(t => (
+                      <option key={t} value={t}>{t === 'Alla' ? 'Alla tåg' : t}</option>
+                    ))}
+                  </select>
                 </div>
-                <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-inera-secondary-90">
-                  <div className="flex flex-col gap-1 px-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Filter: Tjänst</label>
-                    <select 
-                      value={view === 'company' ? 'Alla' : selectedProductId || 'Alla'}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        if (val === 'Alla') {
-                          setView('company');
-                          setSelectedProductId(null);
-                          setSelectedVariant('Alla');
-                        } else {
-                          setView('product');
-                          setSelectedProductId(val);
-                          setSelectedVariant('Alla');
-                        }
-                      }}
-                      className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
-                    >
-                      <option value="Alla">Alla tjänster avg.</option>
-                      {products.map(p => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div className="hidden sm:block w-px h-10 bg-inera-secondary-90" />
 
-                  <div className="flex flex-col gap-1 px-2">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Tidsperiod / Mätning</label>
-                    <select 
-                      value={selectedMeasurementId}
-                      onChange={(e) => setSelectedMeasurementId(e.target.value)}
-                      className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
-                    >
-                      <option value="all">Alla datum (Aggregerat)</option>
-                      {measurements.length > 0 && (
-                        <optgroup label="Enskilda mätningar">
-                          {measurements.map(m => (
-                            <option key={m.id} value={m.id}>
-                              {format(m.date, 'yyyy-MM-dd')} — {m.responseCount} svar
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
-                  </div>
+                <div className="hidden sm:block w-px h-10 bg-inera-secondary-90" />
 
-                  {view === 'product' && variants.length > 0 && (
-                    <>
-                      <div className="hidden sm:block w-px h-10 bg-inera-secondary-90" />
-                      <div className="flex flex-col gap-1 px-2">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Välj Produkt</label>
-                        <select 
-                          value={selectedVariant}
-                          onChange={(e) => setSelectedVariant(e.target.value)}
-                          className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
-                        >
-                          <option value="Alla">Hela tjänsten (Allt)</option>
-                          {variants.map(v => (
-                            <option key={v.id} value={v.name}>{v.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </>
-                  )}
+                <div className="flex flex-col gap-1 px-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Filter: Team</label>
+                  <select 
+                    value={selectedTeamFilter}
+                    onChange={(e) => {
+                      setSelectedTeamFilter(e.target.value);
+                      setView('company');
+                      setSelectedProductId(null);
+                      setSelectedVariant('Alla');
+                    }}
+                    className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
+                  >
+                    {availableTeams.map(tm => (
+                      <option key={tm} value={tm}>{tm === 'Alla' ? 'Alla team' : tm}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="hidden sm:block w-px h-10 bg-inera-secondary-90" />
+
+                <div className="flex flex-col gap-1 px-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Analysera Produkt</label>
+                  <select 
+                    value={view === 'company' ? 'Alla' : selectedProductId || 'Alla'}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'Alla') {
+                        setView('company');
+                        setSelectedProductId(null);
+                        setSelectedVariant('Alla');
+                      } else {
+                        setView('product');
+                        setSelectedProductId(val);
+                        setSelectedVariant('Alla');
+                      }
+                    }}
+                    className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
+                  >
+                    <option value="Alla">Alla produkter avg.</option>
+                    {filteredProducts.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="hidden sm:block w-px h-10 bg-inera-secondary-90" />
+
+                <div className="flex flex-col gap-1 px-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-inera-neutral-40">Tidsperiod / Mätning</label>
+                  <select 
+                    value={selectedMeasurementId}
+                    onChange={(e) => setSelectedMeasurementId(e.target.value)}
+                    className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
+                  >
+                    <option value="all">Alla datum (Aggregerat)</option>
+                    {measurements.length > 0 && (
+                      <optgroup label="Enskilda mätningar">
+                        {measurements.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {format(m.date, 'yyyy-MM-dd')} — {m.responseCount} svar
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
                 </div>
               </div>
             </div>
@@ -1177,14 +1494,14 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <StatCard 
                       icon={Database} 
-                      label="Tjänster" 
-                      value={products.length} 
-                      subValue="Aktiva i katalogen"
+                      label="Produkter" 
+                      value={companyStats.totalProducts || 0} 
+                      subValue={selectedTrainFilter === 'Alla' ? 'Alla Tåg (INERA)' : selectedTeamFilter === 'Alla' ? `Tåg: ${selectedTrainFilter}` : `Team: ${selectedTeamFilter}`}
                       color="bg-inera-primary-40" 
                     />
                     <StatCard 
                       icon={TrendingUp} 
-                      label="Inera Snitt" 
+                      label="Inera Snitt (SUS)" 
                       value={companyStats.avg || '-'} 
                       subValue={companyStats.avg ? getSusGrade(companyStats.avg).label : 'Ingen data'}
                       color="bg-inera-accent-40" 
@@ -1202,132 +1519,117 @@ export default function App() {
 
                   <div className="card p-0 shadow-sm overflow-hidden border-inera-secondary-90">
                     <div className="p-6 border-b border-inera-secondary-90 flex items-center justify-between">
-                      <h3 className="text-lg font-bold text-inera-neutral-10">Tjänstekatalog</h3>
+                      <div>
+                        <h3 className="text-lg font-bold text-inera-neutral-10">Produktkatalog (Tåg / Team / Produkt)</h3>
+                        <p className="text-xs text-inera-neutral-40">Hierarkisk sammanställning baserat på Inera Grundstruktur</p>
+                      </div>
                       <div className="text-xs text-inera-neutral-40 font-medium uppercase tracking-wider">
-                        Visar {filteredProducts.length} av {products.length}
+                        Visar {filteredProducts.length} av {products.length} produkter
                       </div>
                     </div>
-                    <div className="p-6 space-y-6">
-                      <AnimatePresence mode="popLayout">
-                      {filteredProducts.map(p => (
-                        <motion.div 
-                          key={p.id} 
-                          layout
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                          transition={{ duration: 0.2 }}
-                          className="space-y-3"
-                        >
-                          {/* Product Bar */}
-                          <div 
-                            className="flex items-center gap-4 cursor-pointer group"
-                            onClick={() => { setSelectedProductId(p.id); setView('product'); }}
-                          >
-                            <div className="w-48 text-sm font-bold text-inera-neutral-10 truncate group-hover:text-inera-primary-40 transition-colors">
-                              {p.name}
+                    <div className="p-6 space-y-8">
+                      {groupedHierarchy.length === 0 ? (
+                        <div className="text-center py-8 text-inera-neutral-40">Inga produkter matchade valda filter.</div>
+                      ) : (
+                        groupedHierarchy.map(tr => (
+                          <div key={tr.trainName} className="space-y-4 border border-inera-secondary-90 rounded-xl p-5 bg-inera-secondary-95/30">
+                            {/* Train Header */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-inera-secondary-90">
+                              <div className="flex items-center gap-2">
+                                <span className="bg-inera-primary-40 text-white text-xs font-bold px-2.5 py-1 rounded-md uppercase tracking-wider">TÅG</span>
+                                <h4 className="text-base font-bold text-inera-neutral-10 font-display">{tr.trainName}</h4>
+                                <span className="text-xs text-inera-neutral-40 font-medium">({tr.productCount} produkter, {tr.responseCount} svar)</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-inera-neutral-40 font-bold uppercase">Aggregerat SUS:</span>
+                                <span className={cn("text-sm font-extrabold px-3 py-1 rounded-full text-white shadow-xs", getSusGrade(tr.avgScore).bgClass)}>
+                                  {tr.avgScore > 0 ? `${tr.avgScore} SUS` : 'Ingen data'}
+                                </span>
+                              </div>
                             </div>
-                            <div className="flex-1 h-8 bg-inera-secondary-90 rounded-full overflow-hidden relative">
-                              {p.latest ? (
-                                <>
-                                  <div 
-                                    className={cn("h-full transition-all duration-500", getSusGrade(p.latest.averageScore).bgClass)} 
-                                    style={{ width: `${p.latest.averageScore}%` }} 
-                                  />
-                                  {/* Median marker */}
-                                  {p.latest.medianScore !== undefined && (
-                                    <div 
-                                      className="absolute top-0 bottom-0 w-1.5 bg-white shadow-[0_0_4px_rgba(0,0,0,0.3)] z-10 rounded-full h-4 my-auto"
-                                      style={{ left: `${p.latest.medianScore}%`, transform: 'translateX(-50%)' }}
-                                      title={`Median: ${Math.round(p.latest.medianScore)}${getMedianExplanation(p.latest.averageScore, p.latest.medianScore) ? '\n\n' + getMedianExplanation(p.latest.averageScore, p.latest.medianScore) : ''}`}
-                                    />
-                                  )}
-                                  <div className="absolute inset-0 flex items-center justify-between px-3 pointer-events-none">
-                                    <span className="text-xs font-bold text-white drop-shadow-md">
-                                      {Math.round(p.latest.averageScore)} SUS (Medel)
-                                    </span>
-                                    {p.latest.medianScore !== undefined && (
-                                      <span 
-                                        className="text-xs font-bold text-white drop-shadow-md opacity-90 pointer-events-auto cursor-help"
-                                        title={getMedianExplanation(p.latest.averageScore, p.latest.medianScore)}
-                                      >
-                                        {Math.round(p.latest.medianScore)} (Median)
-                                      </span>
-                                    )}
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="absolute inset-0 flex items-center px-3">
-                                  <span className="text-xs font-bold text-inera-neutral-40 italic">Ingen mätning</span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="w-16 text-right text-xs text-inera-neutral-40 font-bold">
-                              {p.latest ? `${p.latest.responseCount} svar` : '-'}
-                            </div>
-                          </div>
-                          
-                          {/* Variant Bars */}
-                          {p.latest?.variantScores && Object.keys(p.latest.variantScores).length > 0 && (
-                            <div className="space-y-2 pl-6 border-l-2 border-inera-secondary-90 ml-2">
-                              {Object.entries(
-                                Object.entries(p.latest.variantScores).reduce((acc, [vName, vData]: [string, any]) => {
-                                  const mappedName = vName === 'Generell' || vName === 'Other' || vName === 'Övriga' ? 'Other' : vName;
-                                  if (!acc[mappedName]) {
-                                    acc[mappedName] = { ...vData };
-                                  } else {
-                                    const totalCount = acc[mappedName].count + vData.count;
-                                    acc[mappedName].score = (acc[mappedName].score * acc[mappedName].count + vData.score * vData.count) / totalCount;
-                                    acc[mappedName].count = totalCount;
-                                  }
-                                  return acc;
-                                }, {} as Record<string, any>)
-                              ).map(([vName, vData]: [string, any]) => (
-                                <div key={vName} className="flex items-center gap-4">
-                                  <div className="w-40 text-xs text-inera-neutral-40 truncate">
-                                    {vName}
-                                  </div>
-                                  <div className="flex-1 h-5 bg-inera-secondary-90 rounded-full overflow-hidden relative">
-                                    <div 
-                                      className={cn("h-full transition-all duration-500", getSusGrade(vData.score).bgClass)} 
-                                      style={{ width: `${vData.score}%` }} 
-                                    />
-                                    {/* Median marker */}
-                                    {vData.median !== undefined && (
-                                      <div 
-                                        className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_2px_rgba(0,0,0,0.3)] z-10 rounded-full h-3 my-auto"
-                                        style={{ left: `${vData.median}%`, transform: 'translateX(-50%)' }}
-                                        title={`Median: ${Math.round(vData.median)}${getMedianExplanation(vData.score, vData.median) ? '\n\n' + getMedianExplanation(vData.score, vData.median) : ''}`}
-                                      />
-                                    )}
-                                    <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
-                                      <span className="text-[10px] font-bold text-white drop-shadow-md">
-                                        {Math.round(vData.score)}
-                                      </span>
-                                      {vData.median !== undefined && (
-                                        <span 
-                                          className="text-[10px] font-bold text-white drop-shadow-md opacity-90 pointer-events-auto cursor-help"
-                                          title={getMedianExplanation(vData.score, vData.median)}
-                                        >
-                                          Med: {Math.round(vData.median)}
-                                        </span>
-                                      )}
+
+                            {/* Teams list */}
+                            <div className="space-y-6 pt-2">
+                              {tr.teams.map(tm => (
+                                <div key={tm.teamName} className="space-y-3 pl-2 sm:pl-4 border-l-2 border-inera-primary-40/30">
+                                  {/* Team Header */}
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                      <span className="bg-inera-accent-40 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">TEAM</span>
+                                      <h5 className="text-sm font-bold text-inera-neutral-20">{tm.teamName}</h5>
                                     </div>
+                                    <span className="text-xs font-bold text-inera-neutral-30">
+                                      Team SUS: <span className="font-extrabold text-inera-neutral-10">{tm.avgScore > 0 ? `${tm.avgScore}` : '-'}</span>
+                                    </span>
                                   </div>
-                                  <div className="w-16 text-right text-[10px] text-inera-neutral-40 font-bold">
-                                    {vData.count} svar
+
+                                  {/* Products inside Team */}
+                                  <div className="space-y-3 pt-1">
+                                    {tm.products.map(p => (
+                                      <div 
+                                        key={p.id}
+                                        className="space-y-2 bg-white p-3.5 rounded-lg border border-inera-secondary-90 hover:border-inera-primary-40/50 transition-colors"
+                                      >
+                                        <div 
+                                          className="flex items-center gap-4 cursor-pointer group"
+                                          onClick={() => { setSelectedProductId(p.id); setView('product'); }}
+                                        >
+                                            <div className="flex-shrink-0 w-48 text-sm font-bold text-inera-neutral-10 group-hover:text-inera-primary-40 transition-colors leading-tight whitespace-normal">
+                                              {p.name}
+                                              {p.latest?.isActive && (
+                                                <div className="mt-1">
+                                                  <span className="inline-flex items-center bg-inera-success-95 text-inera-success-40 text-[9px] px-1.5 py-0.5 rounded border border-inera-success-40 uppercase tracking-wider font-extrabold animate-pulse">
+                                                    Pågår
+                                                  </span>
+                                                </div>
+                                              )}
+                                            </div>
+                                          <div className="flex-1 h-7 bg-inera-secondary-90 rounded-full overflow-hidden relative">
+                                            {p.latest ? (
+                                              <>
+                                                <div 
+                                                  className={cn("h-full transition-all duration-500", getSusGrade(p.latest.averageScore).bgClass)} 
+                                                  style={{ width: `${p.latest.averageScore}%` }} 
+                                                />
+                                                {p.latest.medianScore !== undefined && (
+                                                  <div 
+                                                    className="absolute top-0 bottom-0 w-1.5 bg-white shadow-[0_0_4px_rgba(0,0,0,0.3)] z-10 rounded-full h-4 my-auto"
+                                                    style={{ left: `${p.latest.medianScore}%`, transform: 'translateX(-50%)' }}
+                                                    title={`Median: ${Math.round(p.latest.medianScore)}${getMedianExplanation(p.latest.averageScore, p.latest.medianScore) ? '\n\n' + getMedianExplanation(p.latest.averageScore, p.latest.medianScore) : ''}`}
+                                                  />
+                                                )}
+                                                <div className="absolute inset-0 flex items-center justify-between px-3 pointer-events-none">
+                                                  <span className="text-[11px] font-bold text-white drop-shadow-md">
+                                                    {Math.round(p.latest.averageScore)} SUS (Medel)
+                                                  </span>
+                                                  {p.latest.medianScore !== undefined && (
+                                                    <span 
+                                                      className="text-[11px] font-bold text-white drop-shadow-md opacity-90 pointer-events-auto cursor-help"
+                                                      title={getMedianExplanation(p.latest.averageScore, p.latest.medianScore)}
+                                                    >
+                                                      {Math.round(p.latest.medianScore)} (Median)
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </>
+                                            ) : (
+                                              <div className="absolute inset-0 flex items-center px-3">
+                                                <span className="text-[11px] font-bold text-inera-neutral-40 italic">Ingen mätning</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                          <div className="w-16 text-right text-xs text-inera-neutral-40 font-bold">
+                                            {p.latest ? `${p.latest.responseCount} svar` : '-'}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               ))}
                             </div>
-                          )}
-                        </motion.div>
-                      ))}
-                      </AnimatePresence>
-                      {filteredProducts.length === 0 && (
-                        <div className="py-12 text-center text-inera-neutral-40">
-                          Inga tjänster hittades.
-                        </div>
+                          </div>
+                        ))
                       )}
                     </div>
                   </div>

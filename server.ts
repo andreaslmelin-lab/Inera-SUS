@@ -11,26 +11,32 @@ async function startServer() {
 
   // Proxy API route to avoid CORS and secure tokens server-side
   expressApp.post("/api/sync-metrics", async (req, res) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
     try {
       const payload = req.body;
-      const apiToken = "inera_ux_token_11am0nao"; // Kept secure on the server
+      const apiToken = (req.headers['x-api-token'] as string) || (req.headers['X-API-Token'] as string) || "inera_ux_token_11am0nao";
       
       const externalUrl = "https://inera-ux-dashboard.vercel.app/api/sync-metrics";
+
+      console.log("Attempting sync to upstream...");
 
       const upstreamResponse = await fetch(externalUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiToken}`,
-          "x-api-token": apiToken,
-          "X-API-TOKEN": apiToken,
+          "x-api-token": apiToken
         },
         body: JSON.stringify(payload),
+        signal: controller.signal
       });
 
-      console.log("Sync request payload:", JSON.stringify(payload));
+      clearTimeout(timeoutId);
 
       const responseText = await upstreamResponse.text();
+      console.log("Upstream response status:", upstreamResponse.status);
+
       let responseData: any;
       try {
         responseData = JSON.parse(responseText);
@@ -49,6 +55,11 @@ async function startServer() {
 
       return res.status(200).json(responseData);
     } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        console.error("Sync request timed out");
+        return res.status(200).json({ success: false, error: "Sync request timed out (upstream was too slow)" });
+      }
       console.error("Error proxying sync-metrics request:", err);
       return res.status(500).json({ success: false, error: err.message || "Internal server error" });
     }

@@ -45,6 +45,8 @@ export default function GrundstrukturView() {
     comment: ''
   });
 
+  const [productToDelete, setProductToDelete] = useState<{id: string, name: string} | null>(null);
+
   // Subscribe to products list
   useEffect(() => {
     setLoading(true);
@@ -111,13 +113,37 @@ export default function GrundstrukturView() {
   };
 
   // Get unique Trains and Teams for filtering
-  const trains = useMemo(() => {
+  const trainOptions = useMemo(() => {
+    const names = new Set<string>();
+    const ids = new Set<string>();
+    products.forEach(p => {
+      if (p.trainName) names.add(p.trainName);
+      if (p.trainId) ids.add(p.trainId);
+    });
+    return { names: Array.from(names).sort(), ids: Array.from(ids).sort() };
+  }, [products]);
+
+  const teamOptions = useMemo(() => {
+    const names = new Set<string>();
+    const ids = new Set<string>();
+    products.forEach(p => {
+      if (p.teamName) names.add(p.teamName);
+      if (p.teamId) ids.add(p.teamId);
+    });
+    return { names: Array.from(names).sort(), ids: Array.from(ids).sort() };
+  }, [products]);
+
+  const uxLeads = useMemo(() => {
     const set = new Set<string>();
     products.forEach(p => {
-      if (p.trainName) set.add(p.trainName);
+      if (p.uxLead) set.add(p.uxLead);
     });
-    return ['Alla', ...Array.from(set).sort()];
+    return Array.from(set).sort();
   }, [products]);
+
+  const trains = useMemo(() => {
+    return ['Alla', ...trainOptions.names];
+  }, [trainOptions.names]);
 
   const teams = useMemo(() => {
     const set = new Set<string>();
@@ -234,11 +260,14 @@ export default function GrundstrukturView() {
   };
 
   // Delete product
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Är du säker på att du vill ta bort produkten "${name}" från grundstrukturen? Det raderar inte historiska mätningar men tar bort den från katalogen.`)) {
-      return;
-    }
+  const handleDelete = (id: string, name: string) => {
+    setProductToDelete({ id, name });
+  };
 
+  const confirmDelete = async () => {
+    if (!productToDelete) return;
+    const { id, name } = productToDelete;
+    setProductToDelete(null);
     setError(null);
     setSuccessMsg(null);
     try {
@@ -263,7 +292,7 @@ export default function GrundstrukturView() {
             </div>
             <div>
               <h3 className="text-base font-bold text-inera-neutral-10">Läs in Inera Grundstruktur (CSV)</h3>
-              <p className="text-xs text-inera-neutral-40">Importera eller uppdatera tjänster, tåg, och team via officiella matris-CSV-filer.</p>
+              <p className="text-xs text-inera-neutral-40">Importera eller uppdatera produkter, tåg, och team via officiella matris-CSV-filer.</p>
             </div>
           </div>
 
@@ -302,7 +331,7 @@ export default function GrundstrukturView() {
             <p>
               Varje produkt lagrar referens till sitt tåg, sitt team, sin mognadsnivå och sin SUS-poäng från grundstrukturen.
             </p>
-            <div className="pt-1">
+            <div className="pt-1 flex flex-wrap gap-2">
               <button 
                 onClick={() => setShowAddForm(true)}
                 className="btn btn--s btn--primary"
@@ -388,7 +417,7 @@ export default function GrundstrukturView() {
       <div className="card p-0 shadow-sm overflow-hidden border-inera-secondary-90 bg-white">
         <div className="p-4 border-b border-inera-secondary-90 bg-inera-secondary-95 flex items-center justify-between">
           <h3 className="text-sm font-bold text-inera-neutral-10 uppercase tracking-wide">
-            Inläst Grundstruktur ({filteredProducts.length} tjänster)
+            Inläst Grundstruktur ({filteredProducts.length} produkter)
           </h3>
         </div>
 
@@ -409,7 +438,8 @@ export default function GrundstrukturView() {
                   <th className="py-3 px-4 font-bold">Produkt ID / Namn</th>
                   <th className="py-3 px-4 font-bold">Kopplat Tåg</th>
                   <th className="py-3 px-4 font-bold">Kopplat Team</th>
-                  <th className="py-3 px-4 font-bold">UX Ansvarig / RTE</th>
+                  <th className="py-3 px-4 font-bold">UX Ansvarig</th>
+                  <th className="py-3 px-4 font-bold">RTE</th>
                   <th className="py-3 px-4 font-bold text-center">Mognad (0-5)</th>
                   <th className="py-3 px-4 font-bold text-center">SUS Betyg</th>
                   <th className="py-3 px-4 font-bold">IDS Version</th>
@@ -435,7 +465,13 @@ export default function GrundstrukturView() {
                       ) : (
                         <span className="text-inera-neutral-60 italic text-[10px]">Ej angiven</span>
                       )}
-                      {p.rte && <div className="text-[10px] text-inera-neutral-50 mt-0.5 font-mono">{p.rte}</div>}
+                    </td>
+                    <td className="py-3.5 px-4">
+                      {p.rte ? (
+                        <div className="font-mono text-[10px] text-inera-neutral-50">{p.rte}</div>
+                      ) : (
+                        <span className="text-inera-neutral-60 italic text-[10px]">-</span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <span className="inline-block px-1.5 py-0.5 bg-inera-secondary-90 text-inera-neutral-15 font-bold rounded">
@@ -491,7 +527,7 @@ export default function GrundstrukturView() {
         <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="card p-0 shadow-xl max-w-xl w-full overflow-hidden border-inera-secondary-90 bg-white">
             <div className="p-5 border-b border-inera-secondary-90 flex items-center justify-between bg-inera-secondary-95">
-              <h3 className="font-bold text-inera-neutral-10">Redigera Tjänst i Grundstruktur</h3>
+              <h3 className="font-bold text-inera-neutral-10">Redigera Produkt i Grundstruktur</h3>
               <button 
                 onClick={() => setEditingProduct(null)}
                 className="p-1 hover:bg-inera-secondary-90 rounded-full text-inera-neutral-40"
@@ -530,6 +566,7 @@ export default function GrundstrukturView() {
                       value={editingProduct.uxLead || ''} 
                       onChange={(e) => setEditingProduct({ ...editingProduct, uxLead: e.target.value })}
                       className="input w-full text-xs" 
+                      list="ux-leads"
                     />
                   </div>
                 </div>
@@ -542,6 +579,7 @@ export default function GrundstrukturView() {
                       value={editingProduct.trainName || ''} 
                       onChange={(e) => setEditingProduct({ ...editingProduct, trainName: e.target.value })}
                       className="input w-full text-xs" 
+                      list="train-names"
                     />
                   </div>
                   <div>
@@ -551,6 +589,7 @@ export default function GrundstrukturView() {
                       value={editingProduct.trainId || ''} 
                       onChange={(e) => setEditingProduct({ ...editingProduct, trainId: e.target.value })}
                       className="input w-full text-xs" 
+                      list="train-ids"
                     />
                   </div>
                 </div>
@@ -563,6 +602,7 @@ export default function GrundstrukturView() {
                       value={editingProduct.teamName || ''} 
                       onChange={(e) => setEditingProduct({ ...editingProduct, teamName: e.target.value })}
                       className="input w-full text-xs" 
+                      list="team-names"
                     />
                   </div>
                   <div>
@@ -572,6 +612,7 @@ export default function GrundstrukturView() {
                       value={editingProduct.teamId || ''} 
                       onChange={(e) => setEditingProduct({ ...editingProduct, teamId: e.target.value })}
                       className="input w-full text-xs" 
+                      list="team-ids"
                     />
                   </div>
                 </div>
@@ -704,6 +745,7 @@ export default function GrundstrukturView() {
                       value={newProduct.uxLead || ''} 
                       onChange={(e) => setNewProduct({ ...newProduct, uxLead: e.target.value })}
                       className="input w-full text-xs" 
+                      list="ux-leads"
                     />
                   </div>
                 </div>
@@ -717,6 +759,7 @@ export default function GrundstrukturView() {
                       value={newProduct.trainName || ''} 
                       onChange={(e) => setNewProduct({ ...newProduct, trainName: e.target.value })}
                       className="input w-full text-xs" 
+                      list="train-names"
                     />
                   </div>
                   <div>
@@ -727,6 +770,7 @@ export default function GrundstrukturView() {
                       value={newProduct.trainId || ''} 
                       onChange={(e) => setNewProduct({ ...newProduct, trainId: e.target.value })}
                       className="input w-full text-xs" 
+                      list="train-ids"
                     />
                   </div>
                 </div>
@@ -740,6 +784,7 @@ export default function GrundstrukturView() {
                       value={newProduct.teamName || ''} 
                       onChange={(e) => setNewProduct({ ...newProduct, teamName: e.target.value })}
                       className="input w-full text-xs" 
+                      list="team-names"
                     />
                   </div>
                   <div>
@@ -750,6 +795,7 @@ export default function GrundstrukturView() {
                       value={newProduct.teamId || ''} 
                       onChange={(e) => setNewProduct({ ...newProduct, teamId: e.target.value })}
                       className="input w-full text-xs" 
+                      list="team-ids"
                     />
                   </div>
                 </div>
@@ -836,6 +882,53 @@ export default function GrundstrukturView() {
           </div>
         </div>
       )}
+
+      {/* Delete Product Confirmation Modal */}
+      {productToDelete && (
+        <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
+          <div className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4">
+            <div className="flex items-center gap-3 text-inera-error-40">
+              <Trash2 size={24} />
+              <h3 className="text-lg font-bold font-display text-inera-neutral-10">Ta bort produkt</h3>
+            </div>
+            <p className="text-sm text-inera-neutral-30">
+              Är du säker på att du vill ta bort produkten <strong className="text-inera-neutral-10">{productToDelete.name}</strong> från grundstrukturen? Det raderar inte historiska mätningar men tar bort den från katalogen.
+            </p>
+            <div className="flex justify-end gap-3 pt-2">
+              <button 
+                onClick={() => setProductToDelete(null)}
+                className="btn btn--m btn--secondary"
+              >
+                Avbryt
+              </button>
+              <button 
+                onClick={confirmDelete}
+                className="btn btn--m btn--destructive flex items-center gap-2"
+              >
+                <Trash2 size={16} />
+                Ja, ta bort produkt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Datalists for form fields */}
+      <datalist id="train-names">
+        {trainOptions.names.map(name => <option key={name} value={name} />)}
+      </datalist>
+      <datalist id="train-ids">
+        {trainOptions.ids.map(id => <option key={id} value={id} />)}
+      </datalist>
+      <datalist id="team-names">
+        {teamOptions.names.map(name => <option key={name} value={name} />)}
+      </datalist>
+      <datalist id="team-ids">
+        {teamOptions.ids.map(id => <option key={id} value={id} />)}
+      </datalist>
+      <datalist id="ux-leads">
+        {uxLeads.map(lead => <option key={lead} value={lead} />)}
+      </datalist>
     </div>
   );
 }

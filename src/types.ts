@@ -19,7 +19,17 @@ export interface Team {
 export interface Product {
   id: string;
   name: string;
-  teamId: string;
+  description?: string;
+  teamId?: string;
+  teamName?: string;
+  trainId?: string;
+  trainName?: string;
+  uxLead?: string;
+  rte?: string;
+  maturity?: number;
+  susScore?: number;
+  idsVersion?: string;
+  comment?: string;
 }
 
 export interface SusSurvey {

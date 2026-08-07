@@ -518,21 +518,59 @@ export const MeasurementService = {
   },
 
   getResponsesByProduct(productId: string, callback: (data: ResponseData[]) => void) {
-    const q = query(
+    const qResponses = query(
       collection(db, 'responses'),
       where('productId', '==', productId)
     );
+    const qSusResponses = query(
+      collection(db, 'susResponses')
+    );
     
-    return onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({
+    let csvResponses: ResponseData[] = [];
+    let susResponses: ResponseData[] = [];
+
+    const notify = () => {
+      // Filter susResponses by productId or matching product name
+      const filteredSus = susResponses.filter(sr => sr.productId === productId);
+      callback([...csvResponses, ...filteredSus]);
+    };
+
+    const unsub1 = onSnapshot(qResponses, (snapshot) => {
+      csvResponses = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        submitDate: (doc.data().submitDate as Timestamp).toDate(),
-        startDate: doc.data().startDate ? (doc.data().startDate as Timestamp).toDate() : (doc.data().submitDate as Timestamp).toDate(),
+        submitDate: doc.data().submitDate?.toDate ? doc.data().submitDate.toDate() : new Date(doc.data().submitDate || doc.data().createdAt || Date.now()),
+        startDate: doc.data().startDate?.toDate ? doc.data().startDate.toDate() : new Date(doc.data().startDate || doc.data().submitDate || Date.now()),
         otherText: doc.data().otherText || ''
       } as ResponseData));
-      callback(data);
+      notify();
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'responses'));
+
+    const unsub2 = onSnapshot(qSusResponses, (snapshot) => {
+      susResponses = snapshot.docs.map(doc => {
+        const d = doc.data();
+        const score = Number(d.susScore) || 0;
+        const subDate = d.createdAt ? new Date(d.createdAt) : (d.completedAt ? new Date(d.completedAt) : new Date());
+        return {
+          id: doc.id,
+          measurementId: d.surveyId || 'survey-round',
+          productId: d.productId || '',
+          variantName: d.variantName || 'Egna SUS-enkäter',
+          susScore: score,
+          answers: d.answers || [],
+          comment: d.comment || '',
+          submitDate: isNaN(subDate.getTime()) ? new Date() : subDate,
+          startDate: isNaN(subDate.getTime()) ? new Date() : subDate,
+          otherText: ''
+        } as ResponseData;
+      });
+      notify();
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'susResponses'));
+
+    return () => {
+      unsub1();
+      unsub2();
+    };
   },
 
   async getLatestMeasurementsForAllProducts(): Promise<Measurement[]> {

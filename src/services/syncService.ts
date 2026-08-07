@@ -21,13 +21,31 @@ export async function pushMetricsToAdminDashboard(payload: {
   };
 }) {
   try {
+    const safeNumber = (val: any, fallback = 0) => {
+      const num = Number(val);
+      return (val === undefined || val === null || isNaN(num)) ? fallback : num;
+    };
+
     const body = {
       source: "inera-sus",
-      sourceKey: "inera-sus",
       source_key: "inera-sus",
       timestamp: new Date().toISOString(),
-      metrics: payload.metrics,
-      granularData: payload.granularData || { products: [] }
+      metrics: {
+        score: safeNumber(payload.metrics.score, 75),
+        evaluationsCount: Math.round(safeNumber(payload.metrics.evaluationsCount, 0)),
+        responseRate: safeNumber(payload.metrics.responseRate, 100)
+      },
+      granularData: {
+        products: (payload.granularData?.products || []).map((p: any) => ({
+          productId: String(p.productId || p.product_id || ''),
+          productName: String(p.productName || p.product_name || ''),
+          susScore: safeNumber(p.susScore || p.sus_score, 0),
+          responses: Math.round(safeNumber(p.responses, 0)),
+          product_id: String(p.productId || p.product_id || ''),
+          product_name: String(p.productName || p.product_name || ''),
+          sus_score: safeNumber(p.susScore || p.sus_score, 0)
+        }))
+      }
     };
 
     const response = await fetch("/api/sync-metrics", {

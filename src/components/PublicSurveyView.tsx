@@ -220,6 +220,14 @@ export default function PublicSurveyView({ surveyId, respondentId }: Props) {
     }
   };
 
+  const ensureAbsoluteUrl = (url: string) => {
+    if (!url) return '';
+    const trimmed = url.trim();
+    if (!trimmed) return '';
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
+
   const handleExternalClick = async () => {
     if (createdResponseId) {
       try {
@@ -231,7 +239,8 @@ export default function PublicSurveyView({ surveyId, respondentId }: Props) {
       }
     }
     if (survey?.externalSurveyUrl) {
-      window.location.href = survey.externalSurveyUrl;
+      const targetUrl = ensureAbsoluteUrl(survey.externalSurveyUrl);
+      window.location.href = targetUrl;
     }
   };
 
