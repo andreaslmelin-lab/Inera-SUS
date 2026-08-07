@@ -206,8 +206,14 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
   );
 };
 
-const AdminView = () => {
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur'>('users');
+const AdminView = ({ 
+  onResetCatalog,
+  uploadNode
+}: { 
+  onResetCatalog?: () => void;
+  uploadNode?: React.ReactNode;
+}) => {
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'upload' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -260,37 +266,54 @@ const AdminView = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-6 border-b border-inera-secondary-90">
-        <button 
-          className={cn("text-sm font-bold pb-3 border-b-2 transition-colors", activeAdminTab === 'users' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-          onClick={() => setActiveAdminTab('users')}
-        >
-          Användare
-        </button>
-        <button 
-          className={cn("text-sm font-bold pb-3 border-b-2 transition-colors", activeAdminTab === 'api' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-          onClick={() => setActiveAdminTab('api')}
-        >
-          API-inställningar
-        </button>
-        <button 
-          className={cn("text-sm font-bold pb-3 border-b-2 transition-colors", activeAdminTab === 'rawdata' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-          onClick={() => setActiveAdminTab('rawdata')}
-        >
-          Rådata Export
-        </button>
-        <button 
-          className={cn("text-sm font-bold pb-3 border-b-2 transition-colors", activeAdminTab === 'catalog' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-          onClick={() => setActiveAdminTab('catalog')}
-        >
-          Produktkatalog & Mappning
-        </button>
-        <button 
-          className={cn("text-sm font-bold pb-3 border-b-2 transition-colors", activeAdminTab === 'grundstruktur' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-          onClick={() => setActiveAdminTab('grundstruktur')}
-        >
-          Inläsning Inera Grundstruktur
-        </button>
+      <div className="flex flex-wrap items-center justify-between border-b border-inera-secondary-90 gap-4 pb-1">
+        <div className="flex gap-6 overflow-x-auto">
+          <button 
+            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'users' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+            onClick={() => setActiveAdminTab('users')}
+          >
+            Användare
+          </button>
+          <button 
+            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'upload' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+            onClick={() => setActiveAdminTab('upload')}
+          >
+            Ladda upp data
+          </button>
+          <button 
+            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'api' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+            onClick={() => setActiveAdminTab('api')}
+          >
+            API-inställningar
+          </button>
+          <button 
+            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'rawdata' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+            onClick={() => setActiveAdminTab('rawdata')}
+          >
+            Rådata Export
+          </button>
+          <button 
+            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'catalog' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+            onClick={() => setActiveAdminTab('catalog')}
+          >
+            Produktkatalog & Mappning
+          </button>
+          <button 
+            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'grundstruktur' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+            onClick={() => setActiveAdminTab('grundstruktur')}
+          >
+            Inläsning Inera Grundstruktur
+          </button>
+        </div>
+        {onResetCatalog && (
+          <button
+            onClick={onResetCatalog}
+            className="btn btn--xs btn--destructive mb-2 shrink-0 flex items-center gap-1.5"
+          >
+            <Trash2 size={14} />
+            Nollställ Katalog
+          </button>
+        )}
       </div>
 
       <AnimatePresence mode="wait">
@@ -401,6 +424,18 @@ const AdminView = () => {
           </motion.div>
         )}
         
+        {activeAdminTab === 'upload' && (
+          <motion.div
+            key="upload"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            {uploadNode}
+          </motion.div>
+        )}
+
         {activeAdminTab === 'api' && (
           <motion.div
             key="api"
@@ -453,14 +488,14 @@ const AdminView = () => {
   );
 };
 
-const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
+const HeaderNavItem = ({ icon: Icon, label, active, onClick }: any) => (
   <button
     onClick={onClick}
     className={cn(
-      "w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm font-bold transition-all duration-150 border",
+      "flex items-center gap-2 px-3 py-1.5 text-sm font-bold transition-all border-b-2 whitespace-nowrap",
       active 
-        ? "bg-white text-inera-primary-40 border-inera-secondary-90 shadow-xs border-l-4 border-l-inera-primary-40" 
-        : "text-[#383d42] border-transparent hover:bg-inera-secondary-90 hover:text-inera-neutral-10"
+        ? "border-inera-primary-40 text-inera-primary-40" 
+        : "border-transparent text-[#383d42] hover:text-inera-primary-40"
     )}
   >
     <Icon size={18} className={active ? "text-inera-primary-40" : "text-[#383d42]"} />
@@ -540,6 +575,7 @@ export default function App() {
   const [isSavingManual, setIsSavingManual] = useState<boolean>(false);
   
   // Real-time collections & product mappings
+  const [surveysList, setSurveysList] = useState<any[]>([]);
   const [susResponsesList, setSusResponsesList] = useState<any[]>([]);
   const [allRawResponsesList, setAllRawResponsesList] = useState<any[]>([]);
   const [productMappings, setProductMappings] = useState<Record<string, string>>({});
@@ -547,6 +583,12 @@ export default function App() {
   useEffect(() => {
     if (user) {
       loadProductMappings().then(setProductMappings);
+
+      const qSurveys = query(collection(db, 'susSurveys'));
+      const unsubSurveys = onSnapshot(qSurveys, (snap) => {
+        const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setSurveysList(docs);
+      });
 
       const qSus = query(collection(db, 'susResponses'));
       const unsubSus = onSnapshot(qSus, (snap) => {
@@ -561,52 +603,125 @@ export default function App() {
       });
 
       return () => {
+        unsubSurveys();
         unsubSus();
         unsubResp();
       };
     }
   }, [user]);
 
+  const normalizeStr = (str: string) => {
+    return (str || '')
+      .toLowerCase()
+      .replace(/å/g, 'a')
+      .replace(/ä/g, 'a')
+      .replace(/ö/g, 'o')
+      .replace(/é/g, 'e')
+      .replace(/^prod[-_]/i, '')
+      .replace(/^product[-_]/i, '')
+      .replace(/[^a-z0-9]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const isNameMatch = (a: string, b: string) => {
+    if (!a || !b) return false;
+    const rawA = a.trim().toLowerCase();
+    const rawB = b.trim().toLowerCase();
+    if (rawA === rawB) return true;
+
+    const normA = normalizeStr(a);
+    const normB = normalizeStr(b);
+    if (!normA || !normB) return false;
+    if (normA === normB) return true;
+    if (normA.replace(/\s+/g, '') === normB.replace(/\s+/g, '')) return true;
+
+    if (normA.length >= 3 && normB.length >= 3) {
+      if (normA.includes(normB) || normB.includes(normA)) return true;
+    }
+
+    const stopWords = ['och', 'med', 'for', 'ett', 'ska', 'som', 'tjanst', 'tjansterna', 'tjansten'];
+    const tokensA = normA.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
+    const tokensB = normB.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
+
+    if (tokensA.length > 0 && tokensB.length > 0) {
+      const common = tokensA.filter(t => tokensB.some(tb => tb.includes(t) || t.includes(tb)));
+      const minTokens = Math.min(tokensA.length, tokensB.length);
+      if (common.length >= minTokens) return true;
+    }
+
+    return false;
+  };
+
   const liveMetricsByProductId = useMemo(() => {
-    const map: Record<string, { scores: number[]; latestDate?: Date; isActive?: boolean }> = {};
+    const map: Record<string, { 
+      scores: number[]; 
+      latestDate?: Date; 
+      isActive?: boolean;
+      activeSurveyRound?: any;
+    }> = {};
+
+    // Initialize map for all known products
+    products.forEach(p => {
+      map[p.id] = { scores: [], isActive: false };
+    });
+
+    // Check active survey rounds from susSurveys
+    surveysList.forEach(survey => {
+      const matchedP = products.find(p => 
+        p.id === survey.productId || 
+        isNameMatch(survey.productId, p.id) || 
+        isNameMatch(survey.productId, p.name) || 
+        isNameMatch(survey.name, p.name)
+      );
+
+      if (matchedP) {
+        if (!map[matchedP.id]) {
+          map[matchedP.id] = { scores: [], isActive: false };
+        }
+        if (survey.status === 'active') {
+          map[matchedP.id].isActive = true;
+          map[matchedP.id].activeSurveyRound = survey;
+        }
+      }
+    });
 
     const pIdSet = new Set(products.map(p => p.id));
-    const pNameMap = new Map<string, string>();
-    products.forEach(p => {
-      pNameMap.set(p.name.toLowerCase().trim(), p.id);
-    });
 
     const processItem = (item: any, fromActiveSurvey: boolean = false) => {
       const score = Number(item.susScore);
       if (isNaN(score)) return;
 
-      const rawProdId = (item.productId || '').trim();
-      const rawVariant = (item.variantName || '').trim();
-
       let targetId: string | null = null;
 
-      if (rawProdId && pIdSet.has(rawProdId)) {
-        targetId = rawProdId;
-      } else if (rawVariant && pNameMap.has(rawVariant.toLowerCase())) {
-        targetId = pNameMap.get(rawVariant.toLowerCase())!;
-      } else if (rawProdId && pNameMap.has(rawProdId.toLowerCase())) {
-        targetId = pNameMap.get(rawProdId.toLowerCase())!;
-      } else {
-        const mappedName = productMappings[rawVariant] || productMappings[rawProdId];
-        if (mappedName && pNameMap.has(mappedName.toLowerCase().trim())) {
-          targetId = pNameMap.get(mappedName.toLowerCase().trim())!;
+      // 1. Match via surveyId -> survey in surveysList -> product
+      if (item.surveyId) {
+        const foundSurvey = surveysList.find(s => s.id === item.surveyId);
+        if (foundSurvey) {
+          const foundP = products.find(p => 
+            p.id === foundSurvey.productId || 
+            isNameMatch(foundSurvey.productId, p.id) || 
+            isNameMatch(foundSurvey.productId, p.name) || 
+            isNameMatch(foundSurvey.name, p.name)
+          );
+          if (foundP) targetId = foundP.id;
         }
       }
 
-      // Step 3: Match by raw Product ID (most common)
-      if (!targetId && rawProdId && pIdSet.has(rawProdId)) {
-        targetId = rawProdId;
-      }
+      // 2. Match via item.productId or item.variantName
+      if (!targetId) {
+        const rawProdId = (item.productId || '').trim();
+        const rawVariant = (item.variantName || '').trim();
 
-      // Step 4: Match by Name (fallback)
-      if (!targetId && rawProdId) {
-        const foundId = pNameMap.get(rawProdId.toLowerCase().trim());
-        if (foundId) targetId = foundId;
+        if (rawProdId && pIdSet.has(rawProdId)) {
+          targetId = rawProdId;
+        } else {
+          const foundP = products.find(p => 
+            (rawProdId && (p.id === rawProdId || isNameMatch(rawProdId, p.id) || isNameMatch(rawProdId, p.name))) ||
+            (rawVariant && (isNameMatch(rawVariant, p.name) || isNameMatch(productMappings[rawVariant], p.name)))
+          );
+          if (foundP) targetId = foundP.id;
+        }
       }
 
       if (targetId) {
@@ -626,7 +741,6 @@ export default function App() {
           }
         }
       } else {
-        // Capture unmapped responses in a special bucket to ensure total count (1386) is correct
         const unmappedId = 'unmapped-responses';
         if (!map[unmappedId]) {
           map[unmappedId] = { scores: [], isActive: false };
@@ -649,8 +763,20 @@ export default function App() {
     allRawResponsesList.forEach(item => processItem(item, false));
     susResponsesList.forEach(item => processItem(item, true));
 
+    const processedMeasurementIds = new Set(allRawResponsesList.map(r => r.measurementId).filter(Boolean));
+    allMeasurements.forEach(m => {
+      if (!processedMeasurementIds.has(m.id)) {
+        const score = Number(m.averageScore);
+        if (isNaN(score) || score < 0 || score > 100) return;
+        const count = m.responseCount && m.responseCount > 0 ? m.responseCount : 1;
+        for (let i = 0; i < count; i++) {
+          processItem({ productId: m.productId, variantName: m.fileName, susScore: score, submitDate: m.date }, false);
+        }
+      }
+    });
+
     return map;
-  }, [products, allRawResponsesList, susResponsesList, productMappings]);
+  }, [products, surveysList, allRawResponsesList, susResponsesList, allMeasurements, productMappings]);
   
   // Advanced Filters
   const [selectedTrainFilter, setSelectedTrainFilter] = useState<string>('Alla');
@@ -675,22 +801,38 @@ export default function App() {
       } as Product;
       
       const liveData = liveMetricsByProductId[p.id];
-      if (liveData && liveData.scores.length > 0) {
-        const scores = liveData.scores;
-        const total = scores.length;
-        const sum = scores.reduce((a, b) => a + b, 0);
-        const avg = Math.round((sum / total) * 10) / 10;
-        const med = calculateMedian(scores);
-        return {
-          ...p,
-          latest: {
-            averageScore: avg,
-            medianScore: med,
-            responseCount: total,
-            date: liveData.latestDate || new Date(),
-            isActive: liveData.isActive
-          }
-        };
+      if (liveData) {
+        const hasScores = liveData.scores && liveData.scores.length > 0;
+        const isActive = liveData.isActive || !!liveData.activeSurveyRound;
+
+        if (hasScores) {
+          const scores = liveData.scores;
+          const total = scores.length;
+          const sum = scores.reduce((a, b) => a + b, 0);
+          const avg = Math.round((sum / total) * 10) / 10;
+          const med = calculateMedian(scores);
+          return {
+            ...p,
+            latest: {
+              averageScore: avg,
+              medianScore: med,
+              responseCount: total,
+              date: liveData.latestDate || new Date(),
+              isActive
+            }
+          };
+        } else if (isActive) {
+          return {
+            ...p,
+            latest: {
+              averageScore: 0,
+              medianScore: 0,
+              responseCount: 0,
+              date: new Date(),
+              isActive: true
+            }
+          };
+        }
       }
 
       if (selectedMeasurementId === 'all') {
@@ -748,6 +890,7 @@ export default function App() {
   const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'score'; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
   const [variantSort, setVariantSort] = useState<{ key: 'name' | 'score'; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
   const [distributionView, setDistributionView] = useState<'bar' | 'box'>('bar');
+  const [commentCategoryFilter, setCommentCategoryFilter] = useState<'all' | 'excellent' | 'good' | 'pass' | 'fail'>('all');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
@@ -996,16 +1139,283 @@ export default function App() {
     }
   };
 
-  const filteredResponses = useMemo(() => {
-    // Filter by score validity first (Max SUS is 100)
-    let res = responses.filter(r => r.susScore <= 100);
-    
-    if (selectedVariant === 'Alla') return res;
-    return res.filter(r => {
-      const mappedName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Other' : r.variantName;
-      return mappedName === selectedVariant;
+  // Helper to match a raw response item to a product ID
+  const getMatchedProductId = (
+    item: any,
+    productsList: Product[],
+    surveys: any[],
+    mappings: Record<string, string>
+  ): string | null => {
+    const pIdSet = new Set(productsList.map(p => p.id));
+
+    // 1. Direct survey reference
+    if (item.surveyId) {
+      const survey = surveys.find(s => s.id === item.surveyId);
+      if (survey) {
+        const foundP = productsList.find(p => 
+          p.id === survey.productId || 
+          isNameMatch(survey.productId, p.id) || 
+          isNameMatch(survey.productId, p.name) || 
+          isNameMatch(survey.name, p.name)
+        );
+        if (foundP) return foundP.id;
+      }
+    }
+
+    // 2. Exact match on item.productId
+    const rawProdId = (item.productId || '').trim();
+    if (rawProdId && pIdSet.has(rawProdId)) {
+      return rawProdId;
+    }
+
+    // 3. Match via rawProdId or variantName or productMappings
+    const rawVariant = (item.variantName || '').trim();
+    const mappedVariant = mappings[rawVariant] || mappings[rawProdId];
+
+    const foundP = productsList.find(p => 
+      (rawProdId && (p.id === rawProdId || isNameMatch(rawProdId, p.id) || isNameMatch(rawProdId, p.name))) ||
+      (rawVariant && (isNameMatch(rawVariant, p.name) || (mappedVariant && isNameMatch(mappedVariant, p.name))))
+    );
+
+    if (foundP) return foundP.id;
+    if (rawProdId) return rawProdId;
+    return null;
+  };
+
+  // Combine ALL raw responses across all sources (CSV uploads + SUS surveys + Measurements collection)
+  const allCombinedResponses = useMemo(() => {
+    const list: ResponseData[] = [];
+
+    allRawResponsesList.forEach(item => {
+      const score = Number(item.susScore);
+      if (isNaN(score) || score < 0 || score > 100) return;
+
+      let submitDate = item.submitDate || item.submittedAt || item.createdAt;
+      if (submitDate?.toDate) submitDate = submitDate.toDate();
+      else if (typeof submitDate === 'string' || typeof submitDate === 'number') submitDate = new Date(submitDate);
+      if (!submitDate || isNaN(new Date(submitDate).getTime())) submitDate = new Date();
+      else submitDate = new Date(submitDate);
+
+      let startDate = item.startDate;
+      if (startDate?.toDate) startDate = startDate.toDate();
+      else if (typeof startDate === 'string' || typeof startDate === 'number') startDate = new Date(startDate);
+      if (!startDate || isNaN(new Date(startDate).getTime())) startDate = submitDate;
+      else startDate = new Date(startDate);
+
+      const matchedPId = getMatchedProductId(item, products, surveysList, productMappings);
+
+      list.push({
+        id: item.id,
+        measurementId: item.measurementId || 'csv-upload',
+        productId: matchedPId || item.productId || 'unmapped',
+        variantName: item.variantName || 'Generell',
+        susScore: score,
+        answers: item.answers || [],
+        comment: item.comment || '',
+        submitDate,
+        startDate,
+        otherText: item.otherText || ''
+      });
     });
-  }, [responses, selectedVariant]);
+
+    susResponsesList.forEach(item => {
+      const score = Number(item.susScore);
+      if (isNaN(score) || score < 0 || score > 100) return;
+
+      let submitDate = item.createdAt || item.completedAt || item.submittedAt;
+      if (submitDate?.toDate) submitDate = submitDate.toDate();
+      else if (typeof submitDate === 'string' || typeof submitDate === 'number') submitDate = new Date(submitDate);
+      if (!submitDate || isNaN(new Date(submitDate).getTime())) submitDate = new Date();
+      else submitDate = new Date(submitDate);
+
+      const matchedPId = getMatchedProductId(item, products, surveysList, productMappings);
+      const matchedP = products.find(p => p.id === matchedPId);
+
+      list.push({
+        id: item.id,
+        measurementId: item.surveyId || 'sus-survey',
+        productId: matchedPId || item.productId || 'unmapped',
+        variantName: item.variantName || (matchedP ? matchedP.name : item.productId || 'Generell'),
+        susScore: score,
+        answers: item.answers || [],
+        comment: item.comment || '',
+        submitDate,
+        startDate: submitDate,
+        otherText: ''
+      });
+    });
+
+    // 3. Include measurements from allMeasurements if they don't have individual raw responses
+    const existingMeasurementIds = new Set(list.map(r => r.measurementId));
+    allMeasurements.forEach(m => {
+      if (!existingMeasurementIds.has(m.id)) {
+        const score = Number(m.averageScore);
+        if (isNaN(score) || score < 0 || score > 100) return;
+
+        const count = m.responseCount && m.responseCount > 0 ? m.responseCount : 1;
+        const matchedPId = getMatchedProductId({ productId: m.productId, variantName: m.fileName }, products, surveysList, productMappings);
+        const pId = matchedPId || m.productId || 'unmapped';
+
+        let mDate = m.date ? new Date(m.date) : new Date();
+        if (isNaN(mDate.getTime())) mDate = new Date();
+
+        for (let i = 0; i < count; i++) {
+          list.push({
+            id: `virtual-${m.id}-${i}`,
+            measurementId: m.id,
+            productId: pId,
+            variantName: m.fileName || 'Inera-mätning',
+            susScore: score,
+            answers: [],
+            comment: i === 0 ? (m.fileName || 'Systemmätning') : '',
+            submitDate: mDate,
+            startDate: mDate,
+            otherText: ''
+          });
+        }
+      }
+    });
+
+    return list;
+  }, [allRawResponsesList, susResponsesList, allMeasurements, products, surveysList, productMappings]);
+
+  // Compute available measurement rounds/periods for the time period filter
+  const availableMeasurementRounds = useMemo(() => {
+    const baseResponses = selectedProductId 
+      ? allCombinedResponses.filter(r => {
+          const targetProd = products.find(p => p.id === selectedProductId);
+          const targetName = targetProd ? targetProd.name : selectedProductId;
+          return r.productId === selectedProductId || (targetProd && isNameMatch(r.productId, targetProd.id)) || (targetName && isNameMatch(r.productId, targetName));
+        })
+      : allCombinedResponses;
+
+    const roundsMap = new Map<string, { id: string; label: string; count: number; date: Date }>();
+
+    surveysList.forEach(s => {
+      if (selectedProductId) {
+        const targetProd = products.find(p => p.id === selectedProductId);
+        const isMatch = s.productId === selectedProductId || (targetProd && (isNameMatch(s.productId, targetProd.id) || isNameMatch(s.productId, targetProd.name)));
+        if (!isMatch) return;
+      }
+      const count = baseResponses.filter(r => r.measurementId === s.id).length;
+      roundsMap.set(s.id, {
+        id: s.id,
+        label: s.title || s.name || `Enkätomgång (${s.status === 'active' ? 'Pågående' : 'Avslutad'})`,
+        count,
+        date: s.startDate ? new Date(s.startDate) : new Date()
+      });
+    });
+
+    allMeasurements.forEach(m => {
+      if (selectedProductId && m.productId !== selectedProductId) return;
+      if (!roundsMap.has(m.id)) {
+        const count = m.responseCount || baseResponses.filter(r => r.measurementId === m.id).length;
+        roundsMap.set(m.id, {
+          id: m.id,
+          label: `${m.fileName || 'Mätning'} (${format(new Date(m.date), 'yyyy-MM-dd')})`,
+          count,
+          date: new Date(m.date)
+        });
+      }
+    });
+
+    const groupedByDate: Record<string, number> = {};
+    baseResponses.forEach(r => {
+      const dtKey = format(r.submitDate, 'yyyy-MM-dd');
+      groupedByDate[dtKey] = (groupedByDate[dtKey] || 0) + 1;
+    });
+
+    Object.entries(groupedByDate).forEach(([dtStr, count]) => {
+      const id = `date-${dtStr}`;
+      if (!roundsMap.has(id)) {
+        roundsMap.set(id, {
+          id,
+          label: `Mätning ${dtStr}`,
+          count,
+          date: new Date(dtStr)
+        });
+      }
+    });
+
+    return Array.from(roundsMap.values()).sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [allCombinedResponses, selectedProductId, products, surveysList, allMeasurements]);
+
+  // Compute active filtered responses based on all user UI filters
+  const activeResponses = useMemo(() => {
+    let list = allCombinedResponses;
+
+    // 1. Filter by Product
+    if (selectedProductId && selectedProductId !== 'Alla') {
+      const targetProd = products.find(p => p.id === selectedProductId);
+      const targetName = targetProd ? targetProd.name : selectedProductId;
+
+      list = list.filter(r => {
+        if (r.productId === selectedProductId) return true;
+        if (targetProd && (isNameMatch(r.productId, targetProd.id) || isNameMatch(r.productId, targetProd.name))) return true;
+        if (targetName && (isNameMatch(r.productId, targetName) || isNameMatch(r.variantName, targetName))) return true;
+        return false;
+      });
+    }
+
+    // 2. Filter by Train
+    if (selectedTrainFilter !== 'Alla') {
+      list = list.filter(r => {
+        const p = products.find(prod => prod.id === r.productId || isNameMatch(prod.name, r.productId));
+        return (p?.trainName || 'Ej mappade') === selectedTrainFilter;
+      });
+    }
+
+    // 3. Filter by Team
+    if (selectedTeamFilter !== 'Alla') {
+      list = list.filter(r => {
+        const p = products.find(prod => prod.id === r.productId || isNameMatch(prod.name, r.productId));
+        return (p?.teamName || 'Ej mappade') === selectedTeamFilter;
+      });
+    }
+
+    // 4. Filter by Time Period / Measurement
+    if (selectedMeasurementId && selectedMeasurementId !== 'all') {
+      if (selectedMeasurementId === '30d') {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 30);
+        list = list.filter(r => r.submitDate >= cutoff);
+      } else if (selectedMeasurementId === '90d') {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 90);
+        list = list.filter(r => r.submitDate >= cutoff);
+      } else if (selectedMeasurementId === '1y') {
+        const cutoff = new Date();
+        cutoff.setFullYear(cutoff.getFullYear() - 1);
+        list = list.filter(r => r.submitDate >= cutoff);
+      } else if (selectedMeasurementId === 'latest') {
+        if (list.length > 0) {
+          const maxTime = Math.max(...list.map(r => r.submitDate.getTime()));
+          const latestDateStr = format(new Date(maxTime), 'yyyy-MM-dd');
+          list = list.filter(r => format(r.submitDate, 'yyyy-MM-dd') === latestDateStr);
+        }
+      } else if (selectedMeasurementId.startsWith('date-')) {
+        const targetDate = selectedMeasurementId.replace('date-', '');
+        list = list.filter(r => format(r.submitDate, 'yyyy-MM-dd') === targetDate);
+      } else {
+        list = list.filter(r => r.measurementId === selectedMeasurementId || r.productId === selectedMeasurementId);
+      }
+    }
+
+    // 5. Filter by Variant
+    if (selectedVariant !== 'Alla') {
+      list = list.filter(r => {
+        const mapped = (r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga') ? 'Other' : r.variantName;
+        return mapped === selectedVariant;
+      });
+    }
+
+    // 6. Filter by SUS Range
+    list = list.filter(r => r.susScore >= susRange.min && r.susScore <= susRange.max);
+
+    return list;
+  }, [allCombinedResponses, selectedProductId, selectedTrainFilter, selectedTeamFilter, selectedMeasurementId, selectedVariant, susRange, products]);
+
+  const filteredResponses = activeResponses;
 
   const averageSus = useMemo(() => {
     if (filteredResponses.length === 0) return 0;
@@ -1015,29 +1425,11 @@ export default function App() {
   const trendData = useMemo(() => {
     if (filteredResponses.length === 0) return [];
     
-    // Group filtered responses by date (from startDate or submitDate)
     const grouped: Record<string, { total: number; count: number; date: Date }> = {};
     
     filteredResponses.forEach(r => {
       let date = r.startDate || r.submitDate;
-      
-      // Robust date conversion check to handle potential Timestamp objects or strings
-      if (!date) return;
-      if (!(date instanceof Date)) {
-        if ((date as any).toDate) {
-          date = (date as any).toDate();
-        } else if (typeof date === 'string') {
-          date = new Date(date);
-        } else {
-          try {
-            date = new Date(date as any);
-          } catch(e) {
-            return;
-          }
-        }
-      }
-      
-      if (isNaN(date.getTime())) return;
+      if (!date || isNaN(date.getTime())) return;
       
       const dateKey = format(date, 'yyyy-MM-dd');
       
@@ -1261,53 +1653,64 @@ export default function App() {
   return (
     <div className="min-h-screen bg-white pb-12">
       {/* Header */}
-      <header className="bg-white border-b border-inera-secondary-90 px-6 py-3 sticky top-0 z-40 shadow-2xs">
-        <div className="max-w-[80rem] mx-auto flex items-center justify-between">
-          {/* Logo & Title */}
-          <div className="flex items-center gap-4">
-            <img src={ineraLogo} alt="Inera Logo" className="h-8 w-auto" />
-            <div className="h-7 w-px bg-inera-secondary-90" />
-            <div className="flex flex-col text-inera-primary-40 font-semibold text-sm leading-tight font-display">
-              <span>SUS Analys</span>
-              <span>UX</span>
+      <header className="bg-white border-b border-inera-secondary-90 px-4 sm:px-6 sticky top-0 z-40 shadow-2xs">
+        <div className="max-w-[80rem] mx-auto flex flex-wrap items-center justify-between gap-4 py-2.5">
+          {/* Brand & Nav */}
+          <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
+            <div className="flex items-center gap-3 shrink-0">
+              <img src={ineraLogo} alt="Inera Logo" className="h-8 w-auto" />
+              <div className="h-7 w-px bg-inera-secondary-90" />
+              <div className="flex flex-col text-inera-primary-40 font-semibold text-sm leading-tight font-display">
+                <span>SUS Mätmotor</span>
+                <span className="text-[10px] text-inera-primary-40/80 font-normal">Inera UX</span>
+              </div>
             </div>
+
+            <div className="h-7 w-px bg-inera-secondary-90 hidden md:block shrink-0" />
+
+            {/* Horizontal Navigation Links */}
+            <nav className="flex items-center gap-1 sm:gap-2">
+              <HeaderNavItem 
+                icon={LayoutDashboard} 
+                label="Dashboard" 
+                active={activeTab === 'dashboard'} 
+                onClick={() => { setActiveTab('dashboard'); setView('company'); }} 
+              />
+              <HeaderNavItem 
+                icon={MessageSquare} 
+                label="SUS-omgångar" 
+                active={activeTab === 'sus_admin'} 
+                onClick={() => setActiveTab('sus_admin')} 
+              />
+              {user.email && ADMIN_EMAILS.includes(user.email) && (
+                <HeaderNavItem 
+                  icon={Settings} 
+                  label="Administration" 
+                  active={activeTab === 'admin'} 
+                  onClick={() => setActiveTab('admin')} 
+                />
+              )}
+            </nav>
           </div>
 
-          {/* User Badge & Sync & Logout */}
-          <div className="flex items-center gap-4">
-            {/* Sync Button */}
-            <button
-              onClick={handleManualSync}
-              disabled={isManualSyncing}
-              className="flex items-center gap-2 px-3 py-1.5 bg-inera-accent-40 text-white rounded-lg text-xs font-bold hover:bg-inera-accent-30 transition-colors shadow-2xs disabled:opacity-50"
-              title="Synka till Inera UX Dashboard"
-            >
-              <RefreshCw size={14} className={isManualSyncing ? "animate-spin" : ""} />
-              <span className="hidden sm:inline">Synka till Inera UX Dashboard</span>
-            </button>
-
-            {/* User Pill */}
+          {/* User Badge & Logout */}
+          <div className="flex items-center gap-3 shrink-0">
             <div className="flex items-center gap-2.5 px-3 py-1.5 bg-[#fbf9f7] border border-inera-secondary-90 rounded-lg shadow-2xs">
-              <div className="w-7 h-7 rounded-full bg-white border border-inera-secondary-90 flex items-center justify-center text-inera-accent-40">
-                <LucideUser size={16} className="text-inera-accent-40" />
+              <div className="w-6 h-6 rounded-full bg-white border border-inera-secondary-90 flex items-center justify-center text-inera-accent-40">
+                <LucideUser size={14} className="text-inera-accent-40" />
               </div>
               <div className="text-left text-xs font-bold text-inera-neutral-20 leading-tight">
-                <div>{userNames.firstName}</div>
-                {userNames.lastName ? <div>{userNames.lastName}</div> : null}
+                <div>{userNames.firstName} {userNames.lastName}</div>
               </div>
             </div>
 
-            {/* Logout Link */}
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1.5 text-inera-primary-40 hover:text-inera-primary-30 transition-colors py-1 px-1.5 rounded hover:bg-inera-primary-95"
+              className="flex items-center gap-1.5 text-inera-primary-40 hover:text-inera-primary-30 transition-colors py-1.5 px-2.5 rounded hover:bg-inera-primary-95 text-xs font-bold"
               title="Logga ut"
             >
-              <LogOut size={18} />
-              <div className="flex flex-col text-left leading-tight text-[11px] font-semibold">
-                <span>Logga</span>
-                <span>ut</span>
-              </div>
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Logga ut</span>
             </button>
           </div>
         </div>
@@ -1326,64 +1729,9 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Layout Grid */}
-      <div className="max-w-[80rem] mx-auto mt-8 px-6 grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-8 items-start">
-        
-        {/* Sidebar Nav */}
-        <aside className="bg-inera-secondary-95 border border-inera-neutral-90 rounded-lg p-4 sticky top-8 space-y-6">
-          <nav className="space-y-1">
-            <h2 className="text-xs uppercase tracking-widest text-inera-neutral-40 font-bold mb-3 pl-2">Sektioner</h2>
-            <SidebarItem 
-              icon={LayoutDashboard} 
-              label="Dashboard" 
-              active={activeTab === 'dashboard'} 
-              onClick={() => { setActiveTab('dashboard'); setView('company'); }} 
-            />
-            <SidebarItem 
-              icon={Upload} 
-              label="Ladda upp data" 
-              active={activeTab === 'upload'} 
-              onClick={() => setActiveTab('upload')} 
-            />
-            <SidebarItem 
-              icon={MessageSquare} 
-              label="SUS-modul" 
-              active={activeTab === 'sus_admin'} 
-              onClick={() => setActiveTab('sus_admin')} 
-            />
-            {user.email && ADMIN_EMAILS.includes(user.email) && (
-              <SidebarItem 
-                icon={Settings} 
-                label="Administration" 
-                active={activeTab === 'admin'} 
-                onClick={() => setActiveTab('admin')} 
-              />
-            )}
-          </nav>
-
-          <div className="pt-4 border-t border-inera-secondary-90 space-y-2">
-            {user.email === 'andreas.l.melin@gmail.com' && (
-              <button
-                onClick={() => setShowResetConfirm(true)}
-                className="w-full btn btn--s justify-start btn--destructive"
-              >
-                <Trash2 size={16} />
-                Nollställ Katalog
-              </button>
-            )}
-            <button
-              onClick={handleLogout}
-              className="w-full btn btn--s justify-start btn--tertiary text-inera-neutral-40 hover:text-inera-error-40 hover:bg-inera-error-95"
-            >
-              <LogOut size={16} />
-              Logga ut
-            </button>
-          </div>
-        </aside>
-
-        {/* Main Content Area */}
-        <main className="min-w-0">
-          {activeTab === 'sus_admin' && <SusAdminView />}
+      {/* Main Content Area */}
+      <main className="max-w-[80rem] mx-auto mt-6 px-6">
+        {activeTab === 'sus_admin' && <SusAdminView />}
           {activeTab === 'dashboard' && (
             <div className="bg-inera-secondary-95 border border-inera-secondary-90 rounded-2xl p-4 mb-8 shadow-sm">
               <div className="flex flex-wrap items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-inera-secondary-90 w-full justify-between lg:justify-start">
@@ -1462,12 +1810,18 @@ export default function App() {
                     onChange={(e) => setSelectedMeasurementId(e.target.value)}
                     className="bg-transparent border-none text-sm font-bold text-inera-neutral-10 outline-none pr-8 cursor-pointer hover:text-inera-primary-40 transition-colors"
                   >
-                    <option value="all">Alla datum (Aggregerat)</option>
-                    {measurements.length > 0 && (
-                      <optgroup label="Enskilda mätningar">
-                        {measurements.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {format(m.date, 'yyyy-MM-dd')} — {m.responseCount} svar
+                    <optgroup label="Tidsperioder">
+                      <option value="all">Alla datum (Aggregerat)</option>
+                      <option value="30d">Senaste 30 dagarna</option>
+                      <option value="90d">Senaste 90 dagarna</option>
+                      <option value="1y">Senaste året</option>
+                      <option value="latest">Senaste mätningen</option>
+                    </optgroup>
+                    {availableMeasurementRounds.length > 0 && (
+                      <optgroup label="Mätomgångar & Enkäter">
+                        {availableMeasurementRounds.map(r => (
+                          <option key={r.id} value={r.id}>
+                            {r.label} ({r.count} svar)
                           </option>
                         ))}
                       </optgroup>
@@ -1579,17 +1933,17 @@ export default function App() {
                                               {p.latest?.isActive && (
                                                 <div className="mt-1">
                                                   <span className="inline-flex items-center bg-inera-success-95 text-inera-success-40 text-[9px] px-1.5 py-0.5 rounded border border-inera-success-40 uppercase tracking-wider font-extrabold animate-pulse">
-                                                    Pågår
+                                                    PÅGÅENDE
                                                   </span>
                                                 </div>
                                               )}
                                             </div>
                                           <div className="flex-1 h-7 bg-inera-secondary-90 rounded-full overflow-hidden relative">
-                                            {p.latest ? (
+                                            {p.latest && p.latest.responseCount > 0 ? (
                                               <>
                                                 <div 
                                                   className={cn("h-full transition-all duration-500", getSusGrade(p.latest.averageScore).bgClass)} 
-                                                  style={{ width: `${p.latest.averageScore}%` }} 
+                                                  style={{ width: `${Math.max(p.latest.averageScore, 5)}%` }} 
                                                 />
                                                 {p.latest.medianScore !== undefined && (
                                                   <div 
@@ -1612,6 +1966,10 @@ export default function App() {
                                                   )}
                                                 </div>
                                               </>
+                                            ) : p.latest?.isActive ? (
+                                              <div className="absolute inset-0 flex items-center px-3">
+                                                <span className="text-[11px] font-bold text-inera-success-40 italic">Mätning pågår (0 svar)</span>
+                                              </div>
                                             ) : (
                                               <div className="absolute inset-0 flex items-center px-3">
                                                 <span className="text-[11px] font-bold text-inera-neutral-40 italic">Ingen mätning</span>
@@ -1892,18 +2250,110 @@ export default function App() {
 
                   {/* Comments Section */}
                   <div className="card p-0 shadow-sm overflow-hidden border-inera-secondary-90">
-                    <div className="p-6 border-b border-inera-secondary-90 flex items-center justify-between">
-                      <h3 className="text-lg font-bold text-inera-neutral-10 flex items-center gap-2">
-                        <MessageSquare size={20} className="text-inera-primary-40" />
-                        Användarkommentarer
-                      </h3>
-                      <span className="badge badge--secondary">
-                        {filteredResponses.filter(r => r.comment).length} kommentarer
-                      </span>
+                    <div className="p-6 border-b border-inera-secondary-90 flex flex-wrap items-center justify-between gap-4">
+                      <div>
+                        <h3 className="text-lg font-bold text-inera-neutral-10 flex items-center gap-2">
+                          <MessageSquare size={20} className="text-inera-primary-40" />
+                          Användarkommentarer
+                        </h3>
+                        <p className="text-xs text-inera-neutral-40">Kopplade till SUS Betygsskala</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {(() => {
+                          const comments = filteredResponses.filter(r => r.comment);
+                          const excellent = comments.filter(r => r.susScore >= 80.3).length;
+                          const good = comments.filter(r => r.susScore >= 68 && r.susScore < 80.3).length;
+                          const pass = comments.filter(r => r.susScore >= 51 && r.susScore < 68).length;
+                          const fail = comments.filter(r => r.susScore < 51).length;
+
+                          return (
+                            <>
+                              {excellent > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCommentCategoryFilter(prev => prev === 'excellent' ? 'all' : 'excellent')}
+                                  className={cn(
+                                    "px-2.5 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5",
+                                    commentCategoryFilter === 'excellent'
+                                      ? "bg-emerald-700 text-white border-emerald-800 shadow-sm ring-2 ring-emerald-600/40"
+                                      : "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+                                  )}
+                                >
+                                  <span>{excellent} Utmärkt</span>
+                                </button>
+                              )}
+                              {good > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCommentCategoryFilter(prev => prev === 'good' ? 'all' : 'good')}
+                                  className={cn(
+                                    "px-2.5 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5",
+                                    commentCategoryFilter === 'good'
+                                      ? "bg-blue-700 text-white border-blue-800 shadow-sm ring-2 ring-blue-600/40"
+                                      : "bg-blue-50 text-blue-800 border-blue-300 hover:bg-blue-100"
+                                  )}
+                                >
+                                  <span>{good} Bra</span>
+                                </button>
+                              )}
+                              {pass > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCommentCategoryFilter(prev => prev === 'pass' ? 'all' : 'pass')}
+                                  className={cn(
+                                    "px-2.5 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5",
+                                    commentCategoryFilter === 'pass'
+                                      ? "bg-amber-700 text-white border-amber-800 shadow-sm ring-2 ring-amber-600/40"
+                                      : "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
+                                  )}
+                                >
+                                  <span>{pass} Godkänd</span>
+                                </button>
+                              )}
+                              {fail > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setCommentCategoryFilter(prev => prev === 'fail' ? 'all' : 'fail')}
+                                  className={cn(
+                                    "px-2.5 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5",
+                                    commentCategoryFilter === 'fail'
+                                      ? "bg-red-700 text-white border-red-800 shadow-sm ring-2 ring-red-600/40"
+                                      : "bg-red-50 text-red-800 border-red-300 hover:bg-red-100"
+                                  )}
+                                >
+                                  <span>{fail} Underkänd</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setCommentCategoryFilter('all')}
+                                className={cn(
+                                  "px-2.5 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5",
+                                  commentCategoryFilter === 'all'
+                                    ? "bg-inera-primary-40 text-white border-inera-primary-40 shadow-sm ring-2 ring-inera-primary-40/40"
+                                    : "bg-inera-secondary-90 text-inera-neutral-20 border-inera-secondary-80 hover:bg-inera-secondary-80"
+                                )}
+                              >
+                                <span>{comments.length} totalt</span>
+                              </button>
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                     <div className="max-h-[600px] overflow-y-auto p-6 space-y-8">
                       {(() => {
-                        const commentsWithText = filteredResponses.filter(r => r.comment);
+                        let commentsWithText = filteredResponses.filter(r => r.comment);
+                        if (commentCategoryFilter === 'excellent') {
+                          commentsWithText = commentsWithText.filter(r => r.susScore >= 80.3);
+                        } else if (commentCategoryFilter === 'good') {
+                          commentsWithText = commentsWithText.filter(r => r.susScore >= 68 && r.susScore < 80.3);
+                        } else if (commentCategoryFilter === 'pass') {
+                          commentsWithText = commentsWithText.filter(r => r.susScore >= 51 && r.susScore < 68);
+                        } else if (commentCategoryFilter === 'fail') {
+                          commentsWithText = commentsWithText.filter(r => r.susScore < 51);
+                        }
+
                         if (commentsWithText.length === 0) {
                           return (
                             <div className="text-center text-inera-neutral-40 py-12">
@@ -1915,27 +2365,37 @@ export default function App() {
                         // Group by variant
                         const byVariant: Record<string, ResponseData[]> = {};
                         commentsWithText.forEach(r => {
-                          if (!byVariant[r.variantName]) byVariant[r.variantName] = [];
-                          byVariant[r.variantName].push(r);
+                          const vKey = r.variantName || 'Generell';
+                          if (!byVariant[vKey]) byVariant[vKey] = [];
+                          byVariant[vKey].push(r);
                         });
 
+                        const getBadgeProps = (score: number) => {
+                          if (score >= 80.3) {
+                            return { label: 'Utmärkt', bgClass: 'bg-emerald-50 text-emerald-800 border-emerald-300' };
+                          } else if (score >= 68) {
+                            return { label: 'Bra', bgClass: 'bg-blue-50 text-blue-800 border-blue-300' };
+                          } else if (score >= 51) {
+                            return { label: 'Godkänd', bgClass: 'bg-amber-50 text-amber-800 border-amber-300' };
+                          } else {
+                            return { label: 'Underkänd', bgClass: 'bg-red-50 text-red-800 border-red-300' };
+                          }
+                        };
+
                         return Object.entries(byVariant).map(([vName, responses]) => {
-                          const positive = responses.filter(r => r.susScore >= 68).length;
-                          const negative = responses.filter(r => r.susScore < 68).length;
-                          
                           return (
                             <div key={vName} className="space-y-4">
                               <div className="flex items-center justify-between border-b border-inera-secondary-90 pb-2">
                                 <h4 className="font-bold text-inera-primary-40 uppercase tracking-wider text-sm">{vName}</h4>
-                                <div className="flex items-center gap-3 text-xs font-bold">
-                                  <span className="text-inera-success-40">{positive} Positiva</span>
-                                  <span className="text-inera-error-40">{negative} Negativa</span>
-                                </div>
+                                <span className="text-xs text-inera-neutral-40 font-bold">{responses.length} kommentarer</span>
                               </div>
                               <div className="space-y-3">
                                 <AnimatePresence mode="popLayout">
                                 {responses.map(r => {
-                                  const isPositive = r.susScore >= 68;
+                                  const badge = getBadgeProps(r.susScore);
+                                  const prodObj = products.find(p => p.id === r.productId);
+                                  const prodName = prodObj ? prodObj.name : r.productId;
+
                                   return (
                                     <motion.div 
                                       key={r.id} 
@@ -1946,18 +2406,25 @@ export default function App() {
                                       transition={{ duration: 0.2 }}
                                       className="bg-inera-secondary-95 p-4 rounded-xl border border-inera-secondary-90"
                                     >
-                                      <div className="flex items-center justify-between mb-2">
-                                          <div className="flex items-center gap-2">
-                                            <div className={cn("px-2 py-0.5 rounded text-[10px] font-bold uppercase", isPositive ? "bg-inera-success-95 text-inera-success-50 border border-inera-success-40" : "bg-inera-error-95 text-inera-error-50 border border-inera-error-40")}>
-                                              {isPositive ? 'Positiv' : 'Negativ'} (SUS: {Math.round(r.susScore)})
-                                            </div>
-                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-inera-secondary-90 text-inera-neutral-30 border border-inera-secondary-80">
-                                              {r.variantName === 'Other' && r.otherText ? `Other: ${r.otherText}` : r.variantName}
-                                            </span>
+                                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <div className={cn("px-2.5 py-0.5 rounded text-[11px] font-extrabold border shadow-2xs flex items-center gap-1.5", badge.bgClass)}>
+                                            <span>{badge.label}</span>
+                                            <span className="opacity-50">•</span>
+                                            <span>SUS {Math.round(r.susScore * 10) / 10}</span>
                                           </div>
-                                        <span className="text-[10px] text-inera-neutral-60">{format(r.submitDate, 'yyyy-MM-dd HH:mm')}</span>
+                                          {prodName && (
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-inera-secondary-90 text-inera-neutral-30 border border-inera-secondary-80">
+                                              {prodName}
+                                            </span>
+                                          )}
+                                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-inera-secondary-90 text-inera-neutral-30 border border-inera-secondary-80">
+                                            {r.variantName === 'Other' && r.otherText ? `Other: ${r.otherText}` : r.variantName}
+                                          </span>
+                                        </div>
+                                        <span className="text-[10px] text-inera-neutral-40 font-bold">{format(r.submitDate, 'yyyy-MM-dd HH:mm')}</span>
                                       </div>
-                                      <p className="text-inera-neutral-20 leading-relaxed italic text-sm">"{r.comment}"</p>
+                                      <p className="text-inera-neutral-20 leading-relaxed italic text-sm mt-1">"{r.comment}"</p>
                                     </motion.div>
                                   );
                                 })}
@@ -1972,219 +2439,6 @@ export default function App() {
                 </div>
               )}
               </motion.div>
-            ) : activeTab === 'upload' ? (
-              <motion.div
-                key="upload"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.2, ease: "easeOut" }}
-                className="max-w-2xl mx-auto"
-              >
-              <div className="card p-8 shadow-sm border-inera-secondary-90">
-                <div className="flex items-center gap-4 mb-8">
-                  <div className="bg-inera-secondary-95 p-3 rounded-xl">
-                    <Upload className="text-inera-primary-40" size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-inera-neutral-10">Ladda upp mätning</h3>
-                    <p className="text-sm text-inera-neutral-40">Välj tjänst och ladda upp CSV-fil.</p>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="label">Välj tjänst</label>
-                    <div className="flex gap-2">
-                      <select 
-                        value={uploadProductId}
-                        onChange={(e) => setUploadProductId(e.target.value)}
-                        className="select flex-1"
-                      >
-                        <option value="">-- Välj befintlig tjänst --</option>
-                        {products.map(p => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
-                      <div className="flex items-center px-3 text-inera-neutral-60 font-bold">ELLER</div>
-                      <input 
-                        type="text" 
-                        placeholder="Ny tjänst..." 
-                        value={uploadProductId}
-                        onChange={(e) => setUploadProductId(e.target.value)}
-                        className="input flex-1"
-                      />
-                    </div>
-                    <p className="text-[10px] text-inera-neutral-60 italic">Tips: Skriv namnet om tjänsten inte finns i listan.</p>
-                  </div>
-
-                  <div className="flex gap-2 border-b border-inera-secondary-90 pb-4">
-                    <button
-                      type="button"
-                      onClick={() => { setUploadMethod('csv'); setUploadStatus(null); }}
-                      className={cn("text-xs font-bold pb-2 border-b-2 px-4 transition-colors", uploadMethod === 'csv' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-25")}
-                    >
-                      CSV-fil
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setUploadMethod('manual'); setUploadStatus(null); }}
-                      className={cn("text-xs font-bold pb-2 border-b-2 px-4 transition-colors", uploadMethod === 'manual' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-25")}
-                    >
-                      Registrera manuellt betyg
-                    </button>
-                  </div>
-
-                  {uploadMethod === 'manual' ? (
-                    <form onSubmit={handleManualSubmit} className="space-y-4 p-5 bg-inera-secondary-95/50 border border-inera-secondary-90 rounded-xl">
-                      <h4 className="text-sm font-bold text-inera-neutral-20">Ange mätvärden för tjänsten</h4>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-inera-neutral-30">Genomsnittlig SUS-poäng (0–100) *</label>
-                          <input 
-                            type="number" 
-                            min="0"
-                            max="100"
-                            step="0.1"
-                            required
-                            placeholder="t.ex. 81.5"
-                            value={manualSusScore}
-                            onChange={(e) => setManualSusScore(e.target.value)}
-                            className="input w-full text-xs"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-inera-neutral-30">Antal svar (Evaluations Count) *</label>
-                          <input 
-                            type="number" 
-                            min="1"
-                            required
-                            placeholder="t.ex. 112"
-                            value={manualResponseCount}
-                            onChange={(e) => setManualResponseCount(e.target.value)}
-                            className="input w-full text-xs"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-xs font-bold text-inera-neutral-30">Mätningsdatum (Frivilligt, annars idag)</label>
-                        <input 
-                          type="date" 
-                          value={manualDate}
-                          onChange={(e) => setManualDate(e.target.value)}
-                          className="input w-full text-xs"
-                        />
-                      </div>
-
-                      <div className="pt-2 flex justify-end">
-                        <button
-                          type="submit"
-                          disabled={isSavingManual || !uploadProductId}
-                          className="btn btn--m btn--primary disabled:opacity-50"
-                        >
-                          {isSavingManual ? (
-                            <>
-                              <Loader2 className="animate-spin mr-2" size={16} />
-                              Sparar...
-                            </>
-                          ) : 'Spara mätvärde'}
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="p-6 border-2 border-dashed border-inera-secondary-90 rounded-xl hover:border-inera-primary-60 transition-colors group relative">
-                      <input 
-                        type="file" 
-                        accept=".csv" 
-                        onChange={handleFileUpload}
-                        disabled={isUploading || !uploadProductId}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                      />
-                      <div className="text-center">
-                        {isUploading ? (
-                          <div className="flex flex-col items-center gap-3">
-                            <Loader2 className="animate-spin text-inera-primary-40" size={32} />
-                            <p className="text-sm font-medium text-inera-neutral-40">Bearbetar fil...</p>
-                          </div>
-                        ) : (
-                          <>
-                            <FileSpreadsheet className={cn("mx-auto mb-4 transition-colors", !uploadProductId ? "text-inera-neutral-90" : "text-inera-neutral-60 group-hover:text-inera-primary-40")} size={40} />
-                            <p className={cn("text-sm font-bold", !uploadProductId ? "text-inera-neutral-60" : "text-inera-neutral-10")}>
-                              {!uploadProductId ? 'Välj tjänst först' : 'Klicka eller dra hit CSV-fil'}
-                            </p>
-                            <p className="text-xs text-inera-neutral-40 mt-1">Stöd för Ineras standardexport</p>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {uploadStatus && (
-                    <div className={cn(
-                      "alert mt-4",
-                      uploadStatus.type === 'success' ? "alert--success" : "alert--error"
-                    )} role="status">
-                      {uploadStatus.type === 'success' ? <CheckCircle2 className="alert-icon" size={20} /> : <AlertCircle className="alert-icon" size={20} />}
-                      <div className="alert-body">
-                        <div className="alert-title">{uploadStatus.type === 'success' ? 'Klart!' : 'Fel'}</div>
-                        <p>{uploadStatus.msg}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="alert alert--info" role="status">
-                    <AlertCircle className="alert-icon" size={20} />
-                    <div className="alert-body">
-                      <div className="alert-title">Instruktioner för filformat</div>
-                      <ul className="text-xs space-y-1 list-disc pl-4 mt-2">
-                        <li>Ladda upp rader direkt från exportfilen.</li>
-                        <li>Automatiskt filter: Rader med värdet 0 på frågan om användaren kommer ihåg tjänsten hoppas över.</li>
-                        <li>Automatiskt gruppering: Svar i "Other"-kolumnen slås ihop under produkten "Other".</li>
-                        <li>Statistik baseras på kolumnerna för SUS-frågor och kommentarer.</li>
-                        <li>Trenden visas baserat på "Start Date (UTC)".</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* History */}
-              {user?.email === 'andreas.l.melin@gmail.com' && (
-                <div className="mt-8">
-                  <h3 className="text-lg font-bold text-inera-neutral-10 mb-4">Senaste uppladdningar</h3>
-                  <div className="space-y-3">
-                    {measurements.slice(0, 10).map(m => (
-                      <div key={m.id} className="card flex items-center justify-between group py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-inera-secondary-95 p-2 rounded-lg">
-                            <FileSpreadsheet size={18} className="text-inera-neutral-40" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-inera-neutral-10">{m.fileName}</p>
-                            <p className="text-xs text-inera-neutral-60">{format(m.date, 'yyyy-MM-dd HH:mm')}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-6">
-                          <div className="text-right">
-                            <p className="text-sm font-bold text-inera-primary-40">{Math.round(m.averageScore * 10) / 10} SUS</p>
-                            <p className="text-xs text-inera-neutral-40">{m.responseCount} svar</p>
-                          </div>
-                          <button 
-                            onClick={() => setMeasurementToDelete(m)}
-                            className="p-2 text-inera-neutral-80 hover:text-inera-error-40 hover:bg-inera-error-95 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                            title="Ta bort mätning"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              </motion.div>
             ) : activeTab === 'admin' && user?.email && ADMIN_EMAILS.includes(user.email) ? (
               <motion.div
                 key="admin"
@@ -2193,13 +2447,219 @@ export default function App() {
                 exit={{ opacity: 0, y: -15 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
               >
-                <AdminView />
+                <AdminView 
+                  onResetCatalog={user?.email === 'andreas.l.melin@gmail.com' ? () => setShowResetConfirm(true) : undefined} 
+                  uploadNode={(
+                    <div className="card p-8 shadow-sm border-inera-secondary-90 bg-white">
+                      <div className="flex items-center gap-4 mb-8">
+                        <div className="bg-inera-secondary-95 p-3 rounded-xl">
+                          <Upload className="text-inera-primary-40" size={24} />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-inera-neutral-10">Ladda upp mätning</h3>
+                          <p className="text-sm text-inera-neutral-40">Välj tjänst och ladda upp CSV-fil eller ange manuella mätvärden.</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="label">Välj tjänst</label>
+                          <div className="flex gap-2">
+                            <select 
+                              value={uploadProductId}
+                              onChange={(e) => setUploadProductId(e.target.value)}
+                              className="select flex-1"
+                            >
+                              <option value="">-- Välj befintlig tjänst --</option>
+                              {products.map(p => (
+                                <option key={p.id} value={p.id}>{p.name}</option>
+                              ))}
+                            </select>
+                            <div className="flex items-center px-3 text-inera-neutral-60 font-bold">ELLER</div>
+                            <input 
+                              type="text" 
+                              placeholder="Ny tjänst..." 
+                              value={uploadProductId}
+                              onChange={(e) => setUploadProductId(e.target.value)}
+                              className="input flex-1"
+                            />
+                          </div>
+                          <p className="text-[10px] text-inera-neutral-60 italic">Tips: Skriv namnet om tjänsten inte finns i listan.</p>
+                        </div>
+
+                        <div className="flex gap-2 border-b border-inera-secondary-90 pb-4">
+                          <button
+                            type="button"
+                            onClick={() => { setUploadMethod('csv'); setUploadStatus(null); }}
+                            className={cn("text-xs font-bold pb-2 border-b-2 px-4 transition-colors", uploadMethod === 'csv' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-25")}
+                          >
+                            CSV-fil
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setUploadMethod('manual'); setUploadStatus(null); }}
+                            className={cn("text-xs font-bold pb-2 border-b-2 px-4 transition-colors", uploadMethod === 'manual' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-25")}
+                          >
+                            Registrera manuellt betyg
+                          </button>
+                        </div>
+
+                        {uploadMethod === 'manual' ? (
+                          <form onSubmit={handleManualSubmit} className="space-y-4 p-5 bg-inera-secondary-95/50 border border-inera-secondary-90 rounded-xl">
+                            <h4 className="text-sm font-bold text-inera-neutral-20">Ange mätvärden för tjänsten</h4>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-inera-neutral-30">Genomsnittlig SUS-poäng (0–100) *</label>
+                                <input 
+                                  type="number" 
+                                  min="0"
+                                  max="100"
+                                  step="0.1"
+                                  required
+                                  placeholder="t.ex. 81.5"
+                                  value={manualSusScore}
+                                  onChange={(e) => setManualSusScore(e.target.value)}
+                                  className="input w-full text-xs"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-bold text-inera-neutral-30">Antal svar (Evaluations Count) *</label>
+                                <input 
+                                  type="number" 
+                                  min="1"
+                                  required
+                                  placeholder="t.ex. 112"
+                                  value={manualResponseCount}
+                                  onChange={(e) => setManualResponseCount(e.target.value)}
+                                  className="input w-full text-xs"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="text-xs font-bold text-inera-neutral-30">Mätningsdatum (Frivilligt, annars idag)</label>
+                              <input 
+                                type="date" 
+                                value={manualDate}
+                                onChange={(e) => setManualDate(e.target.value)}
+                                className="input w-full text-xs"
+                              />
+                            </div>
+
+                            <div className="pt-2 flex justify-end">
+                              <button
+                                type="submit"
+                                disabled={isSavingManual || !uploadProductId}
+                                className="btn btn--m btn--primary disabled:opacity-50"
+                              >
+                                {isSavingManual ? (
+                                  <>
+                                    <Loader2 className="animate-spin mr-2" size={16} />
+                                    Sparar...
+                                  </>
+                                ) : 'Spara mätvärde'}
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="p-6 border-2 border-dashed border-inera-secondary-90 rounded-xl hover:border-inera-primary-60 transition-colors group relative">
+                            <input 
+                              type="file" 
+                              accept=".csv" 
+                              onChange={handleFileUpload}
+                              disabled={isUploading || !uploadProductId}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                            />
+                            <div className="text-center">
+                              {isUploading ? (
+                                <div className="flex flex-col items-center gap-3">
+                                  <Loader2 className="animate-spin text-inera-primary-40" size={32} />
+                                  <p className="text-sm font-medium text-inera-neutral-40">Bearbetar fil...</p>
+                                </div>
+                              ) : (
+                                <>
+                                  <FileSpreadsheet className={cn("mx-auto mb-4 transition-colors", !uploadProductId ? "text-inera-neutral-90" : "text-inera-neutral-60 group-hover:text-inera-primary-40")} size={40} />
+                                  <p className={cn("text-sm font-bold", !uploadProductId ? "text-inera-neutral-60" : "text-inera-neutral-10")}>
+                                    {!uploadProductId ? 'Välj tjänst först' : 'Klicka eller dra hit CSV-fil'}
+                                  </p>
+                                  <p className="text-xs text-inera-neutral-40 mt-1">Stöd för Ineras standardexport</p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {uploadStatus && (
+                          <div className={cn(
+                            "alert mt-4",
+                            uploadStatus.type === 'success' ? "alert--success" : "alert--error"
+                          )} role="status">
+                            {uploadStatus.type === 'success' ? <CheckCircle2 className="alert-icon" size={20} /> : <AlertCircle className="alert-icon" size={20} />}
+                            <div className="alert-body">
+                              <div className="alert-title">{uploadStatus.type === 'success' ? 'Klart!' : 'Fel'}</div>
+                              <p>{uploadStatus.msg}</p>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="alert alert--info" role="status">
+                          <AlertCircle className="alert-icon" size={20} />
+                          <div className="alert-body">
+                            <div className="alert-title">Instruktioner för filformat</div>
+                            <ul className="text-xs space-y-1 list-disc pl-4 mt-2">
+                              <li>Ladda upp rader direkt från exportfilen.</li>
+                              <li>Automatiskt filter: Rader med värdet 0 på frågan om användaren kommer ihåg tjänsten hoppas över.</li>
+                              <li>Automatiskt gruppering: Svar i "Other"-kolumnen slås ihop under produkten "Other".</li>
+                              <li>Statistik baseras på kolumnerna för SUS-frågor och kommentarer.</li>
+                              <li>Trenden visas baserat på "Start Date (UTC)".</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* History */}
+                      {user?.email === 'andreas.l.melin@gmail.com' && (
+                        <div className="mt-8">
+                          <h3 className="text-lg font-bold text-inera-neutral-10 mb-4">Senaste uppladdningar</h3>
+                          <div className="space-y-3">
+                            {measurements.slice(0, 10).map(m => (
+                              <div key={m.id} className="card flex items-center justify-between group py-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="bg-inera-secondary-95 p-2 rounded-lg">
+                                    <FileSpreadsheet size={18} className="text-inera-neutral-40" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-inera-neutral-10">{m.fileName}</p>
+                                    <p className="text-xs text-inera-neutral-60">{format(m.date, 'yyyy-MM-dd HH:mm')}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-6">
+                                  <div className="text-right">
+                                    <p className="text-sm font-bold text-inera-primary-40">{Math.round(m.averageScore * 10) / 10} SUS</p>
+                                    <p className="text-xs text-inera-neutral-40">{m.responseCount} svar</p>
+                                  </div>
+                                  <button 
+                                    onClick={() => setMeasurementToDelete(m)}
+                                    className="p-2 text-inera-neutral-80 hover:text-inera-error-40 hover:bg-inera-error-95 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                    title="Ta bort mätning"
+                                  >
+                                    <Trash2 size={18} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )} 
+                />
               </motion.div>
             ) : null}
             </AnimatePresence>
           </div>
         </main>
-      </div>
 
       {/* Reset Confirmation Modal */}
       {showResetConfirm && (

@@ -551,11 +551,12 @@ export const MeasurementService = {
         const d = doc.data();
         const score = Number(d.susScore) || 0;
         const subDate = d.createdAt ? new Date(d.createdAt) : (d.completedAt ? new Date(d.completedAt) : new Date());
+        const matched = productsList.find(p => p.id === d.productId || p.name === d.productId);
         return {
           id: doc.id,
           measurementId: d.surveyId || 'survey-round',
           productId: d.productId || '',
-          variantName: d.variantName || 'Egna SUS-enkäter',
+          variantName: d.variantName || (matched ? matched.name : d.productId || 'Generell'),
           susScore: score,
           answers: d.answers || [],
           comment: d.comment || '',

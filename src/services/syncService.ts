@@ -3,6 +3,49 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { loadProductMappings } from './catalogMappingService';
 
+function normalizeStr(str: string): string {
+  return (str || '')
+    .toLowerCase()
+    .replace(/å/g, 'a')
+    .replace(/ä/g, 'a')
+    .replace(/ö/g, 'o')
+    .replace(/é/g, 'e')
+    .replace(/^prod[-_]/i, '')
+    .replace(/^product[-_]/i, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isNameMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const rawA = a.trim().toLowerCase();
+  const rawB = b.trim().toLowerCase();
+  if (rawA === rawB) return true;
+
+  const normA = normalizeStr(a);
+  const normB = normalizeStr(b);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+  if (normA.replace(/\s+/g, '') === normB.replace(/\s+/g, '')) return true;
+
+  if (normA.length >= 3 && normB.length >= 3) {
+    if (normA.includes(normB) || normB.includes(normA)) return true;
+  }
+
+  const stopWords = ['och', 'med', 'for', 'ett', 'ska', 'som', 'tjanst', 'tjansterna', 'tjansten'];
+  const tokensA = normA.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
+  const tokensB = normB.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
+
+  if (tokensA.length > 0 && tokensB.length > 0) {
+    const common = tokensA.filter(t => tokensB.some(tb => tb.includes(t) || t.includes(tb)));
+    const minTokens = Math.min(tokensA.length, tokensB.length);
+    if (common.length >= minTokens) return true;
+  }
+
+  return false;
+}
+
 export async function pushMetricsToAdminDashboard(payload: {
   source: "inera-sus";
   sourceKey?: "inera-sus";
@@ -17,6 +60,12 @@ export async function pushMetricsToAdminDashboard(payload: {
       productName: string;
       susScore: number;
       responses: number;
+      roundId?: string;
+      roundName?: string;
+      roundStatus?: string;
+      startDate?: string;
+      endDate?: string;
+      date?: string;
     }>;
   };
 }) {
@@ -41,9 +90,19 @@ export async function pushMetricsToAdminDashboard(payload: {
           productName: String(p.productName || p.product_name || ''),
           susScore: safeNumber(p.susScore || p.sus_score, 0),
           responses: Math.round(safeNumber(p.responses, 0)),
+          roundId: String(p.roundId || p.round_id || p.surveyId || ''),
+          roundName: String(p.roundName || p.round_name || ''),
+          roundStatus: String(p.roundStatus || p.round_status || ''),
+          startDate: String(p.startDate || p.start_date || ''),
+          endDate: String(p.endDate || p.end_date || ''),
+          date: String(p.date || new Date().toISOString()),
+          // Backward compatibility fields
           product_id: String(p.productId || p.product_id || ''),
           product_name: String(p.productName || p.product_name || ''),
-          sus_score: safeNumber(p.susScore || p.sus_score, 0)
+          sus_score: safeNumber(p.susScore || p.sus_score, 0),
+          round_id: String(p.roundId || p.round_id || p.surveyId || ''),
+          round_name: String(p.roundName || p.round_name || ''),
+          round_status: String(p.roundStatus || p.round_status || '')
         }))
       }
     };
@@ -56,50 +115,81 @@ export async function pushMetricsToAdminDashboard(payload: {
       body: JSON.stringify(body),
     });
 
-    if (!response.ok) {
-      console.warn("Kunde inte synka till Inera UX Dashboard:", response.status, response.statusText);
-      return false;
+    const responseText = await response.text();
+    let responseData: any = {};
+    try {
+      responseData = JSON.parse(responseText);
+    } catch {
+      responseData = { message: responseText };
     }
 
-    const data = await response.json();
-    console.log("Data synkad med Inera UX Dashboard!", data);
-    return true;
-  } catch (error) {
+    if (!response.ok || responseData.success === false) {
+      const errMsg = responseData.error || responseData.message || `HTTP ${response.status} ${response.statusText}`;
+      console.warn("Kunde inte synka till Inera UX Dashboard:", errMsg);
+      return { success: false, error: errMsg, details: responseData };
+    }
+
+    console.log("Data synkad med Inera UX Dashboard!", responseData);
+    return { success: true, data: responseData };
+  } catch (error: any) {
     console.error("Fel vid synkronisering med Inera UX Dashboard:", error);
-    return false;
+    return { success: false, error: error.message || "Anropsfel vid synkronisering" };
   }
 }
 
 export async function triggerSusMetricsSync() {
   try {
-    const measurementsSnap = await getDocs(collection(db, 'measurements'));
+    const [measurementsSnap, responsesSnap, susResponsesSnap, surveysSnap, productsSnap] = await Promise.all([
+      getDocs(collection(db, 'measurements')),
+      getDocs(collection(db, 'responses')),
+      getDocs(collection(db, 'susResponses')),
+      getDocs(collection(db, 'susSurveys')),
+      getDocs(collection(db, 'products'))
+    ]);
+
     const measurements = measurementsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-
-    const responsesSnap = await getDocs(collection(db, 'responses'));
     const responses = responsesSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-
-    const susResponsesSnap = await getDocs(collection(db, 'susResponses'));
     const susResponses = susResponsesSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
-
-    // Fetch products to support direct ID or exact name matching
-    const productsSnap = await getDocs(collection(db, 'products'));
+    const surveys = surveysSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
     const products = productsSnap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+
+    const surveyMap = new Map<string, any>();
+    surveys.forEach(s => surveyMap.set(s.id, s));
+
     const productMap = new Map<string, any>();
     products.forEach(p => {
       productMap.set(p.id, p);
-      if (p.name) productMap.set(p.name.toLowerCase().trim(), p);
+      if (p.name) {
+        productMap.set(p.name.toLowerCase().trim(), p);
+      }
     });
 
     // Normalize susResponses into standard response format
     const normalizedSusResponses = susResponses.map(sr => {
+      const survey = surveyMap.get(sr.surveyId);
       let matchedP = null;
-      if (sr.productId && productMap.has(sr.productId)) {
-        matchedP = productMap.get(sr.productId);
+      const targetProdId = survey?.productId || sr.productId;
+
+      if (targetProdId && productMap.has(targetProdId)) {
+        matchedP = productMap.get(targetProdId);
+      } else if (targetProdId) {
+        matchedP = products.find(p => p.id === targetProdId || isNameMatch(targetProdId, p.id) || isNameMatch(targetProdId, p.name));
       }
+
+      if (!matchedP && survey?.name) {
+        matchedP = products.find(p => isNameMatch(survey.name, p.name));
+      }
+
       return {
         id: sr.id,
-        productId: matchedP ? matchedP.id : (sr.productId || 'prod-general'),
-        variantName: matchedP ? matchedP.name : (sr.productId || 'Övriga'),
+        roundId: sr.surveyId || survey?.id || '',
+        roundName: survey?.name || '',
+        roundStatus: survey?.status || 'active',
+        startDate: survey?.startDate || '',
+        endDate: survey?.endDate || '',
+        date: sr.submittedAt || sr.createdAt || new Date().toISOString(),
+        productId: matchedP ? matchedP.id : (targetProdId || 'prod-general'),
+        variantName: matchedP ? matchedP.name : (survey?.name || targetProdId || 'Övriga'),
         susScore: sr.susScore,
         comment: sr.comment || ''
       };
@@ -143,18 +233,24 @@ export async function triggerSusMetricsSync() {
     const mappings = await loadProductMappings();
 
     // Group responses by variantName mapped to official master catalog product names
-    const variantMetricsMap: Record<string, { totalScore: number; count: number; productId: string }> = {};
+    const variantMetricsMap: Record<string, { totalScore: number; count: number; productId: string; rounds: Map<string, any>; latestDate?: string }> = {};
     allResponses.forEach(r => {
       let matchedProduct = null;
       const rawName = (r.variantName || '').trim();
       const rawNameLower = rawName.toLowerCase();
+      const normalizedRaw = rawName === 'Generell' || rawName === 'Other' || rawName === 'Övriga' ? 'Övriga' : rawName;
+      const mappedFromCatalog = mappings[normalizedRaw] || mappings[rawName];
 
-      if (productMap.has(rawName)) {
+      if (mappedFromCatalog && productMap.has(mappedFromCatalog.toLowerCase().trim())) {
+        matchedProduct = productMap.get(mappedFromCatalog.toLowerCase().trim());
+      } else if (productMap.has(rawName)) {
         matchedProduct = productMap.get(rawName);
       } else if (productMap.has(rawNameLower)) {
         matchedProduct = productMap.get(rawNameLower);
       } else if (r.productId && productMap.has(r.productId)) {
         matchedProduct = productMap.get(r.productId);
+      } else {
+        matchedProduct = products.find(p => isNameMatch(rawName, p.name) || isNameMatch(r.productId, p.id) || (mappedFromCatalog && isNameMatch(mappedFromCatalog, p.name)));
       }
 
       let mappedName = '';
@@ -164,8 +260,7 @@ export async function triggerSusMetricsSync() {
         mappedName = matchedProduct.name;
         prodId = matchedProduct.id;
       } else {
-        const normalizedRaw = rawName === 'Generell' || rawName === 'Other' || rawName === 'Övriga' ? 'Övriga' : rawName;
-        mappedName = mappings[normalizedRaw] || normalizedRaw || 'Övriga';
+        mappedName = mappedFromCatalog || normalizedRaw || 'Övriga';
         prodId = (r.productId || mappedName).toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || 'prod-general';
       }
 
@@ -173,7 +268,9 @@ export async function triggerSusMetricsSync() {
         variantMetricsMap[mappedName] = { 
           totalScore: 0, 
           count: 0, 
-          productId: prodId
+          productId: prodId,
+          rounds: new Map(),
+          latestDate: undefined
         };
       }
       
@@ -181,17 +278,28 @@ export async function triggerSusMetricsSync() {
       if (!isNaN(sVal)) {
         variantMetricsMap[mappedName].totalScore += sVal;
         variantMetricsMap[mappedName].count++;
+        
+        const resDate = r.date ? (typeof r.date === 'string' ? r.date : new Date(r.date).toISOString()) : new Date().toISOString();
+        if (!variantMetricsMap[mappedName].latestDate || resDate > variantMetricsMap[mappedName].latestDate!) {
+          variantMetricsMap[mappedName].latestDate = resDate;
+        }
+
+        if (r.roundId) {
+          variantMetricsMap[mappedName].rounds.set(r.roundId, {
+            roundId: r.roundId,
+            roundName: r.roundName || 'Enkätomgång',
+            roundStatus: r.roundStatus || 'completed',
+            startDate: r.startDate || resDate,
+            endDate: r.endDate || resDate,
+            date: resDate
+          });
+        }
       }
     });
 
     const addedProductIds = new Set<string>();
     const addedProductNames = new Set<string>();
-    const productMetrics: Array<{
-      productId: string;
-      productName: string;
-      susScore: number;
-      responses: number;
-    }> = [];
+    const productMetrics: Array<any> = [];
 
     // 1. Add all products from the 'products' collection
     products.forEach(p => {
@@ -202,7 +310,7 @@ export async function triggerSusMetricsSync() {
         matchedData = variantMetricsMap[p.name];
       } else {
         const foundKey = Object.keys(variantMetricsMap).find(
-          k => k.toLowerCase().trim() === pNameLower
+          k => k.toLowerCase().trim() === pNameLower || isNameMatch(k, p.name)
         );
         if (foundKey) {
           matchedData = variantMetricsMap[foundKey];
@@ -212,24 +320,90 @@ export async function triggerSusMetricsSync() {
       let susScore = 0;
       let responseCount = 0;
 
-      if (matchedData) {
-        susScore = matchedData.count > 0 ? Math.round((matchedData.totalScore / matchedData.count) * 10) / 10 : 0;
+      if (matchedData && matchedData.count > 0) {
+        susScore = Math.round((matchedData.totalScore / matchedData.count) * 10) / 10;
         responseCount = matchedData.count;
       } else {
-        const baseline = Number(p.susScore);
-        if (p.susScore !== undefined && p.susScore !== null && !isNaN(baseline)) {
-          susScore = Math.round(baseline * 10) / 10;
-        } else {
-          susScore = 0;
+        // Fallback 1: Check 'measurements' collection for this product
+        const prodMeasurements = measurements.filter(m => 
+          m.productId === p.id || 
+          isNameMatch(m.productId, p.id) || 
+          isNameMatch(m.productId, p.name)
+        );
+
+        if (prodMeasurements.length > 0) {
+          let weightedSum = 0;
+          let totalCount = 0;
+          prodMeasurements.forEach(m => {
+            const avg = Number(m.averageScore);
+            const cnt = Number(m.responseCount) || 1;
+            if (!isNaN(avg) && avg >= 0 && avg <= 100) {
+              weightedSum += avg * cnt;
+              totalCount += cnt;
+            }
+          });
+          if (totalCount > 0) {
+            susScore = Math.round((weightedSum / totalCount) * 10) / 10;
+            responseCount = totalCount;
+          }
         }
-        responseCount = 0;
+
+        // Fallback 2: Check product document baseline
+        if (responseCount === 0) {
+          const baseline = Number(p.susScore);
+          if (p.susScore !== undefined && p.susScore !== null && !isNaN(baseline) && baseline > 0) {
+            susScore = Math.round(baseline * 10) / 10;
+            responseCount = Number(p.responsesCount) || 1;
+          }
+        }
       }
+
+      // Check active or completed surveys for this product
+      const productSurveys = surveys.filter(s => 
+        s.productId === p.id || 
+        isNameMatch(s.productId, p.id) || 
+        isNameMatch(s.productId, p.name) || 
+        isNameMatch(s.name, p.name)
+      );
+      const activeSurvey = productSurveys.find(s => s.status === 'active') || productSurveys[0];
+
+      const firstRoundFromResponses = matchedData ? Array.from(matchedData.rounds.values())[0] : null;
+
+      const roundId = activeSurvey?.id || firstRoundFromResponses?.roundId || (responseCount > 0 ? `round-${p.id}` : '');
+      const roundName = activeSurvey?.title || activeSurvey?.name || firstRoundFromResponses?.roundName || (responseCount > 0 ? `SUS-mätning ${p.name}` : '');
+      const roundStatus = activeSurvey?.status || firstRoundFromResponses?.roundStatus || (responseCount > 0 ? 'completed' : 'none');
+      const startDate = activeSurvey?.startDate || firstRoundFromResponses?.startDate || '';
+      const endDate = activeSurvey?.endDate || firstRoundFromResponses?.endDate || '';
+      const dateVal = activeSurvey?.createdAt || firstRoundFromResponses?.date || matchedData?.latestDate || new Date().toISOString();
 
       productMetrics.push({
         productId: p.id,
         productName: p.name,
+        teamId: p.teamId || 'team-omappat',
+        teamName: p.teamName || 'Omappat team',
+        trainId: p.trainId || 'train-omappade',
+        trainName: p.trainName || 'Omappad',
         susScore: susScore,
-        responses: responseCount
+        responses: responseCount,
+        responsesCount: responseCount,
+        roundId: roundId,
+        roundName: roundName,
+        roundStatus: roundStatus,
+        startDate: startDate,
+        endDate: endDate,
+        date: dateVal,
+        // Compatibility duplicate keys
+        product_id: p.id,
+        product_name: p.name,
+        team_id: p.teamId || 'team-omappat',
+        team_name: p.teamName || 'Omappat team',
+        train_id: p.trainId || 'train-omappade',
+        train_name: p.trainName || 'Omappad',
+        sus_score: susScore,
+        responses_count: responseCount,
+        round_id: roundId,
+        round_name: roundName,
+        round_status: roundStatus
       });
 
       addedProductIds.add(p.id);
@@ -241,56 +415,65 @@ export async function triggerSusMetricsSync() {
       const nameLower = name.toLowerCase().trim();
       if (!addedProductNames.has(nameLower) && !addedProductIds.has(data.productId)) {
         const susScore = data.count > 0 ? Math.round((data.totalScore / data.count) * 10) / 10 : 0;
+        const firstRound = Array.from(data.rounds.values())[0];
+
+        const roundId = firstRound?.roundId || (data.count > 0 ? `round-${data.productId}` : '');
+        const roundName = firstRound?.roundName || (data.count > 0 ? `Mätning ${name}` : '');
+        const roundStatus = firstRound?.roundStatus || (data.count > 0 ? 'completed' : 'none');
+        const startDate = firstRound?.startDate || '';
+        const endDate = firstRound?.endDate || '';
+        const dateVal = firstRound?.date || data.latestDate || new Date().toISOString();
+
         productMetrics.push({
           productId: data.productId,
           productName: name,
+          teamId: 'team-omappat',
+          teamName: 'Omappat team',
+          trainId: 'train-omappade',
+          trainName: 'Omappad',
           susScore: susScore,
-          responses: data.count
+          responses: data.count,
+          responsesCount: data.count,
+          roundId: roundId,
+          roundName: roundName,
+          roundStatus: roundStatus,
+          startDate: startDate,
+          endDate: endDate,
+          date: dateVal,
+          // Compatibility duplicate keys
+          product_id: data.productId,
+          product_name: name,
+          team_id: 'team-omappat',
+          team_name: 'Omappat team',
+          train_id: 'train-omappade',
+          train_name: 'Omappad',
+          sus_score: susScore,
+          responses_count: data.count,
+          round_id: roundId,
+          round_name: roundName,
+          round_status: roundStatus
         });
         addedProductIds.add(data.productId);
         addedProductNames.add(nameLower);
       }
     });
 
-    // Build array of products for sync
-    let activeProductMetrics = productMetrics.filter(p => p.responses > 0).map(p => ({
-      productId: p.productId,
-      productName: p.productName,
-      susScore: p.susScore,
-      responses: p.responses,
-      product_id: p.productId,
-      product_name: p.productName,
-      sus_score: p.susScore
-    }));
-
-    // If no active responses exist yet, send all products with 0 or fallback values so downstream API receives valid data
-    if (activeProductMetrics.length === 0) {
-      activeProductMetrics = productMetrics.map(p => ({
-        productId: p.productId,
-        productName: p.productName,
-        susScore: p.susScore || 70,
-        responses: p.responses || 0,
-        product_id: p.productId,
-        product_name: p.productName,
-        sus_score: p.susScore || 70
-      }));
-    }
-
-    return await pushMetricsToAdminDashboard({
-      source: "inera-sus",
+    const payload = {
+      source: "inera-sus" as const,
+      sourceKey: "inera-sus" as const,
       metrics: {
-        score: overallScore || 75,
-        evaluationsCount: totalEvaluations > 0 ? totalEvaluations : (measurements.length || 1),
+        score: overallScore,
+        evaluationsCount: totalEvaluations,
         responseRate: 100
       },
       granularData: {
-        products: activeProductMetrics
+        products: productMetrics
       }
-    });
-  } catch (err) {
-    console.error("Fel vid samling av nyckeltal för synk:", err);
-    return false;
+    };
+
+    return await pushMetricsToAdminDashboard(payload);
+  } catch (error: any) {
+    console.error("Fel vid automatisk synk av SUS-metrics:", error);
+    return { success: false, error: error.message };
   }
 }
-
-

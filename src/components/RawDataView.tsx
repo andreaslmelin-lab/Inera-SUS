@@ -30,11 +30,29 @@ const RawDataView = () => {
         const susResponses = susResponsesSnap.docs.map(d => {
           const data = d.data();
           const subDate = data.createdAt ? new Date(data.createdAt) : (data.completedAt ? new Date(data.completedAt) : new Date());
+          
+          let pName = data.variantName;
+          const targetPId = data.productId;
+          const matchedP = products.find(p => 
+            p.id === targetPId || 
+            p.name === targetPId || 
+            (targetPId && (
+              targetPId.toLowerCase().includes(p.id.toLowerCase()) || 
+              p.id.toLowerCase().includes(targetPId.toLowerCase()) ||
+              targetPId.toLowerCase().replace(/[^a-z0-9]/g, '').includes(p.name.toLowerCase().replace(/[^a-z0-9]/g, '')) ||
+              p.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(targetPId.toLowerCase().replace(/[^a-z0-9]/g, ''))
+            ))
+          );
+
+          if (!pName || pName.startsWith('Egna')) {
+            pName = matchedP ? matchedP.name : (targetPId || 'Övriga');
+          }
+
           return {
             id: d.id,
             measurementId: data.surveyId || 'survey-round',
-            productId: data.productId || 'prod-general',
-            variantName: data.variantName || 'Egna SUS-mätningar',
+            productId: matchedP ? matchedP.id : (targetPId || 'prod-general'),
+            variantName: pName,
             susScore: Number(data.susScore) || 0,
             answers: data.answers || [],
             comment: data.comment || '',
@@ -55,7 +73,7 @@ const RawDataView = () => {
         // Group responses by variantName mapped to official master catalog product names
         const variantMetricsMap: Record<string, { totalScore: number; count: number }> = {};
         responses.forEach(r => {
-          const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Övriga' : (r.variantName || 'Övriga');
+          const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' || r.variantName?.startsWith('Egna') ? 'Övriga' : (r.variantName || 'Övriga');
           const mappedName = mappings[rawName] || rawName;
           if (!variantMetricsMap[mappedName]) {
             variantMetricsMap[mappedName] = { totalScore: 0, count: 0 };
@@ -72,7 +90,17 @@ const RawDataView = () => {
 
         // Product hierarchy export
         const exportProducts = products.map(product => {
-           const prodResponses = responses.filter(r => r.productId === product.id || r.productId === product.name);
+           const prodResponses = responses.filter(r => 
+             r.productId === product.id || 
+             r.productId === product.name ||
+             r.variantName === product.name ||
+             (r.productId && (
+               r.productId.toLowerCase().includes(product.id.toLowerCase()) || 
+               product.id.toLowerCase().includes(r.productId.toLowerCase()) ||
+               r.productId.toLowerCase().replace(/[^a-z0-9]/g, '').includes(product.name.toLowerCase().replace(/[^a-z0-9]/g, '')) ||
+               product.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(r.productId.toLowerCase().replace(/[^a-z0-9]/g, ''))
+             ))
+           );
            const prodTotalScore = prodResponses.reduce((sum, r) => sum + r.susScore, 0);
            const prodCount = prodResponses.length;
            return {
@@ -88,7 +116,6 @@ const RawDataView = () => {
         });
 
         const events = responses.map(r => {
-           const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' ? 'Övriga' : (r.variantName || 'Övriga');
            let dateIso = new Date().toISOString();
            if (r.submitDate) {
              if ((r.submitDate as any).toDate) {
@@ -99,12 +126,29 @@ const RawDataView = () => {
                dateIso = new Date(r.submitDate).toISOString();
              }
            }
+
+           const matchedP = products.find(p => 
+             p.id === r.productId || 
+             p.name === r.productId || 
+             p.name === r.variantName ||
+             (r.productId && (
+               r.productId.toLowerCase().includes(p.id.toLowerCase()) || 
+               p.id.toLowerCase().includes(r.productId.toLowerCase()) ||
+               r.productId.toLowerCase().replace(/[^a-z0-9]/g, '').includes(p.name.toLowerCase().replace(/[^a-z0-9]/g, '')) ||
+               p.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(r.productId.toLowerCase().replace(/[^a-z0-9]/g, ''))
+             ))
+           );
+
+           const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' || r.variantName?.startsWith('Egna') ? 'Övriga' : (r.variantName || 'Övriga');
+           const finalProdName = matchedP ? matchedP.name : (mappings[rawName] || rawName);
+           const finalProdId = matchedP ? matchedP.id : (r.productId || 'prod-general');
+
            return {
              eventId: r.id,
              timestamp: dateIso,
              eventType: "SUS_SURVEY_COMPLETED",
-             targetProductId: r.productId,
-             productName: mappings[rawName] || rawName,
+             targetProductId: finalProdId,
+             productName: finalProdName,
              scoreGiven: r.susScore
            };
         });
@@ -149,14 +193,14 @@ const RawDataView = () => {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const ok = await triggerSusMetricsSync();
-      if (ok) {
+      const res = await triggerSusMetricsSync();
+      if (res.success) {
         setSyncResult({ success: true, message: "Datasynkronisering till Inera Admin Dashboard lyckades!" });
       } else {
-        setSyncResult({ success: false, message: "Kunde inte synkronisera data till Inera Admin Dashboard." });
+        setSyncResult({ success: false, message: `Kunde inte synkronisera: ${res.error || 'Okänt fel'}` });
       }
-    } catch (error) {
-      setSyncResult({ success: false, message: "Ett fel uppstod vid synkroniseringen." });
+    } catch (error: any) {
+      setSyncResult({ success: false, message: `Ett fel uppstod: ${error.message || 'Synkfel'}` });
     } finally {
       setSyncing(false);
     }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Copy, RefreshCw, CheckCircle2, AlertCircle, Send } from 'lucide-react';
 import { motion } from 'motion/react';
 import { triggerSusMetricsSync } from '../services/syncService';
@@ -11,31 +11,27 @@ const ApiView = () => {
   const [endpoint, setEndpoint] = useState('https://inera-ux-dashboard.vercel.app/api/sync-metrics');
   const [apiToken, setApiToken] = useState('inera_ux_token_11am0nao');
 
-  const [jsonPayload, setJsonPayload] = useState(JSON.stringify({
-    "source": "inera-sus",
-    "timestamp": new Date().toISOString(),
-    "metrics": {
-      "score": 81.5,
-      "evaluationsCount": 112,
-      "responseRate": 72
-    },
-    "granularData": {
-      "products": [
-        {
-          "productId": "prod-1177-tidbokning",
-          "productName": "1177 Tidbokning",
-          "susScore": 84,
-          "responses": 45
-        },
-        {
-          "productId": "prod-journalen",
-          "productName": "1177 Journalen",
-          "susScore": 79,
-          "responses": 67
-        }
-      ]
+  const [jsonPayload, setJsonPayload] = useState('');
+  const [loadingPayload, setLoadingPayload] = useState(true);
+
+  const fetchLivePayload = async () => {
+    setLoadingPayload(true);
+    try {
+      // Mock push to inspect body structure
+      const res = await triggerSusMetricsSync();
+      if (res && res.data) {
+        setJsonPayload(JSON.stringify(res.data, null, 2));
+      }
+    } catch (e) {
+      console.error("Fel vid laddning av levande JSON payload:", e);
+    } finally {
+      setLoadingPayload(false);
     }
-  }, null, 2));
+  };
+
+  useEffect(() => {
+    fetchLivePayload();
+  }, []);
 
   const [response, setResponse] = useState('');
 
@@ -44,18 +40,20 @@ const ApiView = () => {
     setSyncStatus(null);
     setResponse('');
     try {
-      const ok = await triggerSusMetricsSync();
-      if (ok) {
+      const res = await triggerSusMetricsSync();
+      if (res.success) {
         setSyncStatus({ success: true, message: 'Data synkad med Inera UX Dashboard' });
-        setResponse(JSON.stringify({ success: true, status: 'Synced successfully to Inera UX Dashboard' }, null, 2));
+        setResponse(JSON.stringify(res.data || { success: true }, null, 2));
       } else {
-        setSyncStatus({ success: false, message: 'Synkronisering misslyckades. Se konsolen för detaljer.' });
-        setResponse(JSON.stringify({ success: false, error: 'Sync failed' }, null, 2));
+        const errMsg = res.error || 'Synkronisering misslyckades.';
+        setSyncStatus({ success: false, message: `Synkronisering misslyckades: ${errMsg}` });
+        setResponse(JSON.stringify(res.details || { success: false, error: errMsg }, null, 2));
       }
     } catch (err: any) {
       console.error("Fel vid manuell synk:", err);
-      setSyncStatus({ success: false, message: 'Synkronisering misslyckades.' });
-      setResponse(JSON.stringify({ error: err.message || 'Call failed' }, null, 2));
+      const errMsg = err.message || 'Kommunikationsfel vid synk.';
+      setSyncStatus({ success: false, message: `Synkronisering misslyckades: ${errMsg}` });
+      setResponse(JSON.stringify({ error: errMsg }, null, 2));
     } finally {
       setIsSyncing(false);
     }
@@ -64,6 +62,7 @@ const ApiView = () => {
   const handleTestPost = async () => {
     setIsSyncing(true);
     setSyncStatus(null);
+    setResponse('');
     try {
       const parsed = JSON.parse(jsonPayload);
       const res = await fetch('/api/sync-metrics', {
@@ -74,18 +73,28 @@ const ApiView = () => {
         },
         body: JSON.stringify(parsed)
       });
-      const data = await res.json();
+      const responseText = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        data = { message: responseText };
+      }
+
       setResponse(JSON.stringify(data, null, 2));
+
       if (res.ok && data.success !== false) {
         setSyncStatus({ success: true, message: 'Data synkad med Inera UX Dashboard' });
       } else {
+        const errMsg = data.error || data.message || `HTTP ${res.status} ${res.statusText}`;
         console.error("API test error:", data);
-        setSyncStatus({ success: false, message: data.error || 'Kunde inte synka. Se konsolen.' });
+        setSyncStatus({ success: false, message: `Synkronisering misslyckades: ${errMsg}` });
       }
     } catch (err: any) {
       console.error("Fel vid testanrop:", err);
-      setResponse(JSON.stringify({ error: 'Failed to call API' }, null, 2));
-      setSyncStatus({ success: false, message: 'Misslyckades vid anrop.' });
+      const errMsg = err.message || 'Misslyckades vid anrop.';
+      setResponse(JSON.stringify({ error: errMsg }, null, 2));
+      setSyncStatus({ success: false, message: `Synkronisering misslyckades: ${errMsg}` });
     } finally {
       setIsSyncing(false);
     }

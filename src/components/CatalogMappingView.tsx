@@ -218,9 +218,15 @@ export default function CatalogMappingView() {
       <div className="card p-6 shadow-md border-inera-secondary-90 bg-white">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-inera-neutral-10">Produktmappningar</h3>
-          <span className="text-xs font-bold text-inera-neutral-40">
-            {Object.keys(mappings).length} av {internalProducts.length} produkter mappade
-          </span>
+          {(() => {
+            const mappedCount = Object.keys(mappings).filter(k => Boolean(mappings[k] && masterCatalog.includes(mappings[k]))).length;
+            const activeResponsesCount = internalProducts.filter(p => p.count > 0).length;
+            return (
+              <span className="text-xs font-bold text-inera-neutral-40">
+                {mappedCount} av {masterCatalog.length} produkter mappade, {activeResponsesCount} med aktiva svar
+              </span>
+            );
+          })()}
         </div>
 
         <div className="overflow-x-auto">
