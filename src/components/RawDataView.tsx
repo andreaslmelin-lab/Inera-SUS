@@ -8,6 +8,49 @@ import { Download, Code2, Link, Copy, Send, CheckCircle, AlertCircle } from 'luc
 import { triggerSusMetricsSync, pushMetricsToAdminDashboard } from '../services/syncService';
 import { loadProductMappings } from '../services/catalogMappingService';
 
+function normalizeStr(str: string): string {
+  return (str || '')
+    .toLowerCase()
+    .replace(/å/g, 'a')
+    .replace(/ä/g, 'a')
+    .replace(/ö/g, 'o')
+    .replace(/é/g, 'e')
+    .replace(/^prod[-_]/i, '')
+    .replace(/^product[-_]/i, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isNameMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const rawA = a.trim().toLowerCase();
+  const rawB = b.trim().toLowerCase();
+  if (rawA === rawB) return true;
+
+  const normA = normalizeStr(a);
+  const normB = normalizeStr(b);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+  if (normA.replace(/\s+/g, '') === normB.replace(/\s+/g, '')) return true;
+
+  if (normA.length >= 3 && normB.length >= 3) {
+    if (normA.includes(normB) || normB.includes(normA)) return true;
+  }
+
+  const stopWords = ['och', 'med', 'for', 'ett', 'ska', 'som', 'tjanst', 'tjansterna', 'tjansten'];
+  const tokensA = normA.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
+  const tokensB = normB.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
+
+  if (tokensA.length > 0 && tokensB.length > 0) {
+    const common = tokensA.filter(t => tokensB.some(tb => tb.includes(t) || t.includes(tb)));
+    const minTokens = Math.min(tokensA.length, tokensB.length);
+    if (common.length >= minTokens) return true;
+  }
+
+  return false;
+}
+
 const RawDataView = () => {
   const [exportPayload, setExportPayload] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -33,18 +76,15 @@ const RawDataView = () => {
           
           let pName = data.variantName;
           const targetPId = data.productId;
+          
+          // Use robust Swedish-aware matching
           const matchedP = products.find(p => 
             p.id === targetPId || 
             p.name === targetPId || 
-            (targetPId && (
-              targetPId.toLowerCase().includes(p.id.toLowerCase()) || 
-              p.id.toLowerCase().includes(targetPId.toLowerCase()) ||
-              targetPId.toLowerCase().replace(/[^a-z0-9]/g, '').includes(p.name.toLowerCase().replace(/[^a-z0-9]/g, '')) ||
-              p.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(targetPId.toLowerCase().replace(/[^a-z0-9]/g, ''))
-            ))
+            (targetPId && (isNameMatch(targetPId, p.id) || isNameMatch(targetPId, p.name)))
           );
 
-          if (!pName || pName.startsWith('Egna')) {
+          if (!pName || pName.startsWith('Egna') || pName === 'Generell' || pName === 'Övriga') {
             pName = matchedP ? matchedP.name : (targetPId || 'Övriga');
           }
 
@@ -73,8 +113,26 @@ const RawDataView = () => {
         // Group responses by variantName mapped to official master catalog product names
         const variantMetricsMap: Record<string, { totalScore: number; count: number }> = {};
         responses.forEach(r => {
-          const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' || r.variantName?.startsWith('Egna') ? 'Övriga' : (r.variantName || 'Övriga');
-          const mappedName = mappings[rawName] || rawName;
+          let matchedProduct = null;
+          const rawName = (r.variantName || '').trim();
+          const rawNameLower = rawName.toLowerCase();
+          const normalizedRaw = rawName === 'Generell' || rawName === 'Other' || rawName === 'Övriga' ? 'Övriga' : rawName;
+          const mappedFromCatalog = mappings[normalizedRaw] || mappings[rawName];
+
+          // Use same matching as syncService for unified grouping
+          const matchedP = products.find(p => 
+            p.id === r.productId || 
+            p.name === r.productId || 
+            p.name === r.variantName ||
+            (r.productId && (isNameMatch(r.productId, p.id) || isNameMatch(r.productId, p.name))) ||
+            (r.variantName && isNameMatch(r.variantName, p.name))
+          );
+
+          let mappedName = matchedP ? matchedP.name : (mappedFromCatalog || normalizedRaw || 'Övriga');
+          if (mappedName.startsWith('Egna') && matchedP) {
+            mappedName = matchedP.name;
+          }
+
           if (!variantMetricsMap[mappedName]) {
             variantMetricsMap[mappedName] = { totalScore: 0, count: 0 };
           }
@@ -94,12 +152,8 @@ const RawDataView = () => {
              r.productId === product.id || 
              r.productId === product.name ||
              r.variantName === product.name ||
-             (r.productId && (
-               r.productId.toLowerCase().includes(product.id.toLowerCase()) || 
-               product.id.toLowerCase().includes(r.productId.toLowerCase()) ||
-               r.productId.toLowerCase().replace(/[^a-z0-9]/g, '').includes(product.name.toLowerCase().replace(/[^a-z0-9]/g, '')) ||
-               product.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(r.productId.toLowerCase().replace(/[^a-z0-9]/g, ''))
-             ))
+             (r.productId && (isNameMatch(r.productId, product.id) || isNameMatch(r.productId, product.name))) ||
+             (r.variantName && isNameMatch(r.variantName, product.name))
            );
            const prodTotalScore = prodResponses.reduce((sum, r) => sum + r.susScore, 0);
            const prodCount = prodResponses.length;
@@ -131,17 +185,17 @@ const RawDataView = () => {
              p.id === r.productId || 
              p.name === r.productId || 
              p.name === r.variantName ||
-             (r.productId && (
-               r.productId.toLowerCase().includes(p.id.toLowerCase()) || 
-               p.id.toLowerCase().includes(r.productId.toLowerCase()) ||
-               r.productId.toLowerCase().replace(/[^a-z0-9]/g, '').includes(p.name.toLowerCase().replace(/[^a-z0-9]/g, '')) ||
-               p.name.toLowerCase().replace(/[^a-z0-9]/g, '').includes(r.productId.toLowerCase().replace(/[^a-z0-9]/g, ''))
-             ))
+             (r.productId && (isNameMatch(r.productId, p.id) || isNameMatch(r.productId, p.name))) ||
+             (r.variantName && isNameMatch(r.variantName, p.name))
            );
 
            const rawName = r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga' || r.variantName?.startsWith('Egna') ? 'Övriga' : (r.variantName || 'Övriga');
-           const finalProdName = matchedP ? matchedP.name : (mappings[rawName] || rawName);
-           const finalProdId = matchedP ? matchedP.id : (r.productId || 'prod-general');
+           let finalProdName = matchedP ? matchedP.name : (mappings[rawName] || rawName);
+           let finalProdId = matchedP ? matchedP.id : (r.productId || 'prod-general');
+
+           if (finalProdName.startsWith('Egna') && matchedP) {
+             finalProdName = matchedP.name;
+           }
 
            return {
              eventId: r.id,

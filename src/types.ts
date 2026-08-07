@@ -46,6 +46,7 @@ export interface SusSurvey {
   introText?: string;
   freeTextLabel?: string;
   thankYouText?: string;
+  alreadyAnsweredText?: string;
   externalSurveyEnabled?: boolean;
   externalSurveyUrl?: string;
   externalSurveyBtnText?: string;

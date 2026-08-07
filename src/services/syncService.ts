@@ -49,24 +49,21 @@ function isNameMatch(a: string, b: string): boolean {
 export async function pushMetricsToAdminDashboard(payload: {
   source: "inera-sus";
   sourceKey?: "inera-sus";
+  timestamp?: string;
+  organization?: string;
   metrics: {
     score: number;
+    grade?: string;
     evaluationsCount: number;
     responseRate: number;
+    productsCount?: number;
+    products?: Array<any>;
   };
   granularData?: {
-    products?: Array<{
-      productId: string;
-      productName: string;
-      susScore: number;
-      responses: number;
-      roundId?: string;
-      roundName?: string;
-      roundStatus?: string;
-      startDate?: string;
-      endDate?: string;
-      date?: string;
-    }>;
+    individuals?: Array<any>;
+    teams?: Array<any>;
+    products?: Array<any>;
+    events?: Array<any>;
   };
 }) {
   try {
@@ -78,18 +75,29 @@ export async function pushMetricsToAdminDashboard(payload: {
     const body = {
       source: "inera-sus",
       source_key: "inera-sus",
-      timestamp: new Date().toISOString(),
+      timestamp: payload.timestamp || new Date().toISOString(),
+      organization: payload.organization || "Inera AB",
       metrics: {
         score: safeNumber(payload.metrics.score, 75),
+        grade: payload.metrics.grade || "",
         evaluationsCount: Math.round(safeNumber(payload.metrics.evaluationsCount, 0)),
-        responseRate: safeNumber(payload.metrics.responseRate, 100)
+        responseRate: safeNumber(payload.metrics.responseRate, 100),
+        productsCount: safeNumber(payload.metrics.productsCount || payload.granularData?.products?.length, 0),
+        products: (payload.metrics.products || payload.granularData?.products || []).map((p: any) => ({
+          productId: String(p.productId || p.product_id || p.id || ''),
+          productName: String(p.productName || p.product_name || p.name || ''),
+          susScore: safeNumber(p.susScore || p.sus_score || p.score, 0),
+          responses: Math.round(safeNumber(p.responses || p.responsesCount || 0))
+        }))
       },
       granularData: {
+        individuals: payload.granularData?.individuals || [],
+        teams: payload.granularData?.teams || [],
         products: (payload.granularData?.products || []).map((p: any) => ({
-          productId: String(p.productId || p.product_id || ''),
-          productName: String(p.productName || p.product_name || ''),
+          productId: String(p.productId || p.product_id || p.id || ''),
+          productName: String(p.productName || p.product_name || p.name || ''),
           susScore: safeNumber(p.susScore || p.sus_score, 0),
-          responses: Math.round(safeNumber(p.responses, 0)),
+          responses: Math.round(safeNumber(p.responses || p.responsesCount, 0)),
           roundId: String(p.roundId || p.round_id || p.surveyId || ''),
           roundName: String(p.roundName || p.round_name || ''),
           roundStatus: String(p.roundStatus || p.round_status || ''),
@@ -97,20 +105,36 @@ export async function pushMetricsToAdminDashboard(payload: {
           endDate: String(p.endDate || p.end_date || ''),
           date: String(p.date || new Date().toISOString()),
           // Backward compatibility fields
-          product_id: String(p.productId || p.product_id || ''),
-          product_name: String(p.productName || p.product_name || ''),
+          product_id: String(p.productId || p.product_id || p.id || ''),
+          product_name: String(p.productName || p.product_name || p.name || ''),
           sus_score: safeNumber(p.susScore || p.sus_score, 0),
           round_id: String(p.roundId || p.round_id || p.surveyId || ''),
           round_name: String(p.roundName || p.round_name || ''),
           round_status: String(p.roundStatus || p.round_status || '')
+        })),
+        events: (payload.granularData?.events || []).map((ev: any) => ({
+          eventId: String(ev.eventId || ev.event_id || ev.id || ''),
+          timestamp: String(ev.timestamp || new Date().toISOString()),
+          eventType: String(ev.eventType || ev.event_type || 'SUS_SURVEY_COMPLETED'),
+          targetProductId: String(ev.targetProductId || ev.target_product_id || ev.productId || ''),
+          productName: String(ev.productName || ev.product_name || ev.variantName || ''),
+          scoreGiven: safeNumber(ev.scoreGiven || ev.score_given || ev.susScore || ev.sus_score, 0)
         }))
       }
     };
+
+    const savedEndpoint = typeof window !== 'undefined' ? window.localStorage.getItem('inera_sus_sync_endpoint') : null;
+    const endpointToUse = savedEndpoint || 'https://inera-ux-dashboard.vercel.app/api/sync-metrics';
+
+    const savedToken = typeof window !== 'undefined' ? window.localStorage.getItem('inera_sus_sync_token') : null;
+    const tokenToUse = savedToken || 'inera_ux_token_11am0nao';
 
     const response = await fetch("/api/sync-metrics", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-API-Token": tokenToUse,
+        "X-Sync-Endpoint": endpointToUse
       },
       body: JSON.stringify(body),
     });
@@ -137,7 +161,7 @@ export async function pushMetricsToAdminDashboard(payload: {
   }
 }
 
-export async function triggerSusMetricsSync() {
+export async function generateSusMetricsPayload() {
   try {
     const [measurementsSnap, responsesSnap, susResponsesSnap, surveysSnap, productsSnap] = await Promise.all([
       getDocs(collection(db, 'measurements')),
@@ -180,6 +204,11 @@ export async function triggerSusMetricsSync() {
         matchedP = products.find(p => isNameMatch(survey.name, p.name));
       }
 
+      let finalVarName = matchedP ? matchedP.name : (survey?.name || targetProdId || 'Övriga');
+      if ((finalVarName.startsWith('Egna') || finalVarName === 'Generell' || finalVarName === 'Övriga') && matchedP) {
+        finalVarName = matchedP.name;
+      }
+
       return {
         id: sr.id,
         roundId: sr.surveyId || survey?.id || '',
@@ -189,7 +218,7 @@ export async function triggerSusMetricsSync() {
         endDate: survey?.endDate || '',
         date: sr.submittedAt || sr.createdAt || new Date().toISOString(),
         productId: matchedP ? matchedP.id : (targetProdId || 'prod-general'),
-        variantName: matchedP ? matchedP.name : (survey?.name || targetProdId || 'Övriga'),
+        variantName: finalVarName,
         susScore: sr.susScore,
         comment: sr.comment || ''
       };
@@ -367,7 +396,7 @@ export async function triggerSusMetricsSync() {
       );
       const activeSurvey = productSurveys.find(s => s.status === 'active') || productSurveys[0];
 
-      const firstRoundFromResponses = matchedData ? Array.from(matchedData.rounds.values())[0] : null;
+      const firstRoundFromResponses = matchedData ? Array.from(matchedData.rounds.values())[0] as any : null;
 
       const roundId = activeSurvey?.id || firstRoundFromResponses?.roundId || (responseCount > 0 ? `round-${p.id}` : '');
       const roundName = activeSurvey?.title || activeSurvey?.name || firstRoundFromResponses?.roundName || (responseCount > 0 ? `SUS-mätning ${p.name}` : '');
@@ -415,7 +444,7 @@ export async function triggerSusMetricsSync() {
       const nameLower = name.toLowerCase().trim();
       if (!addedProductNames.has(nameLower) && !addedProductIds.has(data.productId)) {
         const susScore = data.count > 0 ? Math.round((data.totalScore / data.count) * 10) / 10 : 0;
-        const firstRound = Array.from(data.rounds.values())[0];
+        const firstRound = Array.from(data.rounds.values())[0] as any;
 
         const roundId = firstRound?.roundId || (data.count > 0 ? `round-${data.productId}` : '');
         const roundName = firstRound?.roundName || (data.count > 0 ? `Mätning ${name}` : '');
@@ -458,19 +487,72 @@ export async function triggerSusMetricsSync() {
       }
     });
 
+    const events = allResponses.map(r => {
+      let matchedP = null;
+      const rawName = (r.variantName || '').trim();
+      const rawNameLower = rawName.toLowerCase();
+      const normalizedRaw = rawName === 'Generell' || rawName === 'Other' || rawName === 'Övriga' ? 'Övriga' : rawName;
+      const mappedFromCatalog = mappings[normalizedRaw] || mappings[rawName];
+
+      if (mappedFromCatalog && productMap.has(mappedFromCatalog.toLowerCase().trim())) {
+        matchedP = productMap.get(mappedFromCatalog.toLowerCase().trim());
+      } else if (productMap.has(rawName)) {
+        matchedP = productMap.get(rawName);
+      } else if (productMap.has(rawNameLower)) {
+        matchedP = productMap.get(rawNameLower);
+      } else if (r.productId && productMap.has(r.productId)) {
+        matchedP = productMap.get(r.productId);
+      } else {
+        matchedP = products.find(p => isNameMatch(rawName, p.name) || isNameMatch(r.productId, p.id) || (mappedFromCatalog && isNameMatch(mappedFromCatalog, p.name)));
+      }
+
+      let finalProdName = matchedP ? matchedP.name : (mappedFromCatalog || normalizedRaw || 'Övriga');
+      let finalProdId = matchedP ? matchedP.id : (r.productId || 'prod-general');
+
+      if (finalProdName.startsWith('Egna') && matchedP) {
+        finalProdName = matchedP.name;
+      }
+
+      const resDate = r.date ? (typeof r.date === 'string' ? r.date : new Date(r.date).toISOString()) : new Date().toISOString();
+
+      return {
+        eventId: r.id,
+        timestamp: resDate,
+        eventType: "SUS_SURVEY_COMPLETED",
+        targetProductId: finalProdId,
+        productName: finalProdName,
+        scoreGiven: Number(r.susScore) || 0
+      };
+    });
+
     const payload = {
       source: "inera-sus" as const,
       sourceKey: "inera-sus" as const,
+      timestamp: new Date().toISOString(),
+      organization: "Inera AB",
       metrics: {
         score: overallScore,
         evaluationsCount: totalEvaluations,
-        responseRate: 100
+        responseRate: 100,
+        productsCount: productMetrics.length,
+        products: productMetrics
       },
       granularData: {
-        products: productMetrics
+        products: productMetrics,
+        events: events
       }
     };
 
+    return payload;
+  } catch (error: any) {
+    console.error("Fel vid generering av SUS-payload:", error);
+    throw error;
+  }
+}
+
+export async function triggerSusMetricsSync() {
+  try {
+    const payload = await generateSusMetricsPayload();
     return await pushMetricsToAdminDashboard(payload);
   } catch (error: any) {
     console.error("Fel vid automatisk synk av SUS-metrics:", error);

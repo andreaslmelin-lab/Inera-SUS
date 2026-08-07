@@ -57,6 +57,7 @@ export default function SusAdminView() {
     introText: '',
     freeTextLabel: '',
     thankYouText: '',
+    alreadyAnsweredText: '',
     externalSurveyEnabled: false,
     externalSurveyUrl: '',
     externalSurveyBtnText: 'Fortsätt'
@@ -342,6 +343,7 @@ export default function SusAdminView() {
         introText: formData.introText || '',
         freeTextLabel: formData.freeTextLabel || '',
         thankYouText: formData.thankYouText || '',
+        alreadyAnsweredText: formData.alreadyAnsweredText || '',
         externalSurveyEnabled: formData.externalSurveyEnabled || false,
         externalSurveyUrl: formData.externalSurveyUrl ? ensureAbsoluteUrl(formData.externalSurveyUrl) : '',
         externalSurveyBtnText: formData.externalSurveyBtnText || 'Fortsätt',
@@ -355,7 +357,8 @@ export default function SusAdminView() {
         type: 'general',
         endCondition: 'date',
         month: new Date().getMonth() + 1,
-        year: new Date().getFullYear()
+        year: new Date().getFullYear(),
+        alreadyAnsweredText: ''
       });
       fetchData();
     } catch (err) {
@@ -410,6 +413,7 @@ export default function SusAdminView() {
         introText: editFormData.introText || '',
         freeTextLabel: editFormData.freeTextLabel || '',
         thankYouText: editFormData.thankYouText || '',
+        alreadyAnsweredText: editFormData.alreadyAnsweredText || '',
         externalSurveyEnabled: editFormData.externalSurveyEnabled || false,
         externalSurveyUrl: editFormData.externalSurveyUrl ? ensureAbsoluteUrl(editFormData.externalSurveyUrl) : '',
         externalSurveyBtnText: editFormData.externalSurveyBtnText || 'Fortsätt'
@@ -1023,6 +1027,15 @@ export default function SusAdminView() {
                       onChange={(e) => setEditFormData({ ...editFormData, thankYouText: e.target.value })} 
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Text för redan besvarad enkät (använd [ProductName] som platshållare)</label>
+                    <input 
+                      type="text" 
+                      className="input w-full text-sm" 
+                      value={editFormData.alreadyAnsweredText || ''} 
+                      onChange={(e) => setEditFormData({ ...editFormData, alreadyAnsweredText: e.target.value })} 
+                    />
+                  </div>
                 </div>
 
                 <div className="pt-4 border-t border-inera-secondary-90 space-y-3">
@@ -1300,6 +1313,17 @@ export default function SusAdminView() {
                   placeholder={`Tack för att du tog dig tid att svara. Dina synpunkter hjälper oss...`}
                   value={formData.thankYouText || ''}
                   onChange={(e) => setFormData({...formData, thankYouText: e.target.value})}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Text för redan besvarad enkät (använd [ProductName] som platshållare)</label>
+                <input 
+                  type="text" 
+                  className="input w-full text-sm" 
+                  placeholder={`Denna länk har redan använts för att registrera en utvärdering för [ProductName] och kan inte användas fler gånger.`}
+                  value={formData.alreadyAnsweredText || ''}
+                  onChange={(e) => setFormData({...formData, alreadyAnsweredText: e.target.value})}
                 />
               </div>
             </div>

@@ -37,6 +37,33 @@ export default function PublicSurveyView({ surveyId, respondentId }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [createdResponseId, setCreatedResponseId] = useState<string | null>(null);
 
+  // Helper to determine the actual product name cleanly
+  const getProductName = (): string => {
+    if (product?.name) return product.name;
+    
+    // Fallback if product is not fetched/found
+    if (survey?.productId && survey.productId !== 'general') {
+      const pId = survey.productId;
+      if (pId.startsWith('prod-')) {
+        const clean = pId.replace('prod-', '').replace(/[-_]+/g, ' ');
+        return clean.charAt(0).toUpperCase() + clean.slice(1);
+      }
+      // Replace hyphens with spaces and capitalize
+      const clean = pId.replace(/[-_]+/g, ' ');
+      return clean.charAt(0).toUpperCase() + clean.slice(1);
+    }
+    
+    if (survey?.name) {
+      const parts = survey.name.split('-');
+      if (parts.length >= 3) {
+        const candidate = parts.slice(0, parts.length - 2).join(' ').trim();
+        if (candidate) return candidate.charAt(0).toUpperCase() + candidate.slice(1);
+      }
+      return survey.name;
+    }
+    return 'Produkten';
+  };
+
   useEffect(() => {
     loadSurveyData();
   }, [surveyId, respondentId]);
@@ -86,11 +113,45 @@ export default function PublicSurveyView({ surveyId, respondentId }: Props) {
         }
       }
 
-      // 5. Hämta produktnamn
+      // 5. Hämta produktnamn (med robust matchning)
       if (surveyData.productId) {
         const prodDoc = await getDoc(doc(db, 'products', surveyData.productId));
         if (prodDoc.exists()) {
           setProduct({ ...prodDoc.data(), id: prodDoc.id } as Product);
+        } else {
+          // Försök hämta alla produkter och söka efter matchning
+          try {
+            const productsSnap = await getDocs(collection(db, 'products'));
+            const productsList = productsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id } as Product));
+            
+            let matched = productsList.find(p => p.id.toLowerCase() === surveyData.productId.toLowerCase());
+            if (!matched) {
+              matched = productsList.find(p => p.name.toLowerCase().trim() === surveyData.productId.toLowerCase().trim());
+            }
+            if (!matched) {
+              const normSurveyId = surveyData.productId.toLowerCase().replace(/[^a-z0-9]/g, '');
+              matched = productsList.find(p => {
+                const normPId = p.id.toLowerCase().replace(/[^a-z0-9]/g, '');
+                const normPName = p.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+                return normPId === normSurveyId || normPName === normSurveyId;
+              });
+            }
+            if (!matched) {
+              const normSurvey = surveyData.productId.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+              matched = productsList.find(p => {
+                const normPName = p.name.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+                if (normSurvey && normPName && (normSurvey.includes(normPName) || normPName.includes(normSurvey))) {
+                  return true;
+                }
+                return false;
+              });
+            }
+            if (matched) {
+              setProduct(matched);
+            }
+          } catch (err) {
+            console.error("Fel vid robust produktmatchning:", err);
+          }
         }
       }
 
@@ -296,22 +357,45 @@ export default function PublicSurveyView({ surveyId, respondentId }: Props) {
     );
   }
 
-  // Sida för redan använd unik länk
-  if (statusState === 'already_used') {
+  // Sida för redan använd unik länk (ser ut som startskärmen men utan startknapp och med anpassad text)
+  if (statusState === 'already_used' && survey) {
+    const pName = getProductName();
+    const mailtoSubject = encodeURIComponent(`SUS-mätning ${survey?.name || pName}`);
+    const mailtoUrl = `mailto:ux@inera.se?subject=${mailtoSubject}`;
+
+    const defaultAlreadyUsedText = `Denna länk har redan använts för att registrera en utvärdering för [ProductName] och kan inte användas fler gånger.`;
+    const rawAlreadyUsedText = survey.alreadyAnsweredText || defaultAlreadyUsedText;
+    const displayAlreadyUsedText = rawAlreadyUsedText.replaceAll('[ProductName]', pName);
+
     return (
-      <div className="min-h-screen bg-inera-secondary-95 text-inera-neutral-10">
-        {renderHeader()}
-        <main className="max-w-xl mx-auto px-4 py-8">
-          <div className="card p-8 bg-white shadow-md rounded-2xl text-center border border-inera-secondary-90">
-            <div className="w-16 h-16 rounded-full bg-inera-primary-40/10 text-inera-primary-40 mx-auto mb-4 flex items-center justify-center">
-              <CheckCircle2 size={32} />
+      <div className="min-h-screen bg-inera-secondary-95 text-inera-neutral-10 flex flex-col justify-between">
+        <div>
+          {renderHeader()}
+          <main className="max-w-2xl mx-auto px-4 pb-12">
+            <div className="card p-8 bg-white shadow-lg rounded-2xl border border-inera-secondary-90">
+              <h1 className="text-3xl font-bold font-display text-inera-neutral-10 mb-4">
+                Utvärdering av {pName}
+              </h1>
+
+              <div className="text-inera-neutral-30 leading-relaxed space-y-4 mb-8 text-base">
+                <p>{displayAlreadyUsedText}</p>
+              </div>
+
+              <div className="p-4 bg-inera-secondary-95 rounded-xl border border-inera-secondary-90 flex items-center justify-between text-sm">
+                <span className="text-inera-neutral-30">Frågor eller funderingar?</span>
+                <a 
+                  href={mailtoUrl}
+                  className="inline-flex items-center gap-2 font-bold text-inera-primary-40 hover:underline"
+                >
+                  <Mail size={16} /> ux@inera.se
+                </a>
+              </div>
             </div>
-            <h1 className="text-2xl font-bold font-display text-inera-neutral-10 mb-3">Enkäten är redan besvarad</h1>
-            <p className="text-inera-neutral-30 leading-relaxed mb-6">
-              Den här enkäten har redan besvarats via denna länk. Det går bara att skicka in ett svar per personlig inbjudningslänk.
-            </p>
-          </div>
-        </main>
+          </main>
+        </div>
+        <footer className="bg-inera-secondary-90 text-inera-neutral-30 py-4 px-6 text-center text-xs border-t border-inera-secondary-90">
+          Inera AB — Digitala tjänster för välfärden
+        </footer>
       </div>
     );
   }
@@ -335,25 +419,6 @@ export default function PublicSurveyView({ surveyId, respondentId }: Props) {
       </div>
     );
   }
-
-  // Helper to determine the actual product name cleanly
-  const getProductName = (): string => {
-    if (product?.name) return product.name;
-    if (survey?.productId) {
-      if (!survey.productId.startsWith('prod-') && survey.productId !== 'general') {
-        return survey.productId;
-      }
-    }
-    if (survey?.name) {
-      const parts = survey.name.split('-');
-      if (parts.length >= 3) {
-        const candidate = parts.slice(0, parts.length - 2).join('-').trim();
-        if (candidate) return candidate;
-      }
-      return survey.name;
-    }
-    return 'Produkten';
-  };
 
   const productName = getProductName();
   const mailtoSubject = encodeURIComponent(`SUS-mätning ${survey?.name || productName}`);

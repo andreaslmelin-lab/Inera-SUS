@@ -527,13 +527,38 @@ export const MeasurementService = {
     );
     
     let csvResponses: ResponseData[] = [];
-    let susResponses: ResponseData[] = [];
+    let rawSusResponsesDocs: any[] = [];
+    let productsList: Product[] = [];
 
     const notify = () => {
+      // Map susResponses on the fly using latest productsList
+      const susResponses = rawSusResponsesDocs.map(d => {
+        const score = Number(d.susScore) || 0;
+        const subDate = d.createdAt ? new Date(d.createdAt) : (d.completedAt ? new Date(d.completedAt) : new Date());
+        const matched = productsList.find(p => p.id === d.productId || p.name === d.productId);
+        return {
+          id: d.id,
+          measurementId: d.surveyId || 'survey-round',
+          productId: d.productId || '',
+          variantName: d.variantName || (matched ? matched.name : d.productId || 'Generell'),
+          susScore: score,
+          answers: d.answers || [],
+          comment: d.comment || '',
+          submitDate: isNaN(subDate.getTime()) ? new Date() : subDate,
+          startDate: isNaN(subDate.getTime()) ? new Date() : subDate,
+          otherText: ''
+        } as ResponseData;
+      });
+
       // Filter susResponses by productId or matching product name
       const filteredSus = susResponses.filter(sr => sr.productId === productId);
       callback([...csvResponses, ...filteredSus]);
     };
+
+    const unsubProducts = onSnapshot(query(collection(db, 'products')), (snapshot) => {
+      productsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      notify();
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'products'));
 
     const unsub1 = onSnapshot(qResponses, (snapshot) => {
       csvResponses = snapshot.docs.map(doc => ({
@@ -547,28 +572,12 @@ export const MeasurementService = {
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'responses'));
 
     const unsub2 = onSnapshot(qSusResponses, (snapshot) => {
-      susResponses = snapshot.docs.map(doc => {
-        const d = doc.data();
-        const score = Number(d.susScore) || 0;
-        const subDate = d.createdAt ? new Date(d.createdAt) : (d.completedAt ? new Date(d.completedAt) : new Date());
-        const matched = productsList.find(p => p.id === d.productId || p.name === d.productId);
-        return {
-          id: doc.id,
-          measurementId: d.surveyId || 'survey-round',
-          productId: d.productId || '',
-          variantName: d.variantName || (matched ? matched.name : d.productId || 'Generell'),
-          susScore: score,
-          answers: d.answers || [],
-          comment: d.comment || '',
-          submitDate: isNaN(subDate.getTime()) ? new Date() : subDate,
-          startDate: isNaN(subDate.getTime()) ? new Date() : subDate,
-          otherText: ''
-        } as ResponseData;
-      });
+      rawSusResponsesDocs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       notify();
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'susResponses'));
 
     return () => {
+      unsubProducts();
       unsub1();
       unsub2();
     };

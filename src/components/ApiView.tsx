@@ -1,27 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { Copy, RefreshCw, CheckCircle2, AlertCircle, Send } from 'lucide-react';
 import { motion } from 'motion/react';
-import { triggerSusMetricsSync } from '../services/syncService';
+import { triggerSusMetricsSync, generateSusMetricsPayload } from '../services/syncService';
 import { cn } from '../lib/utils';
 
 const ApiView = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{ success?: boolean; message?: string } | null>(null);
 
-  const [endpoint, setEndpoint] = useState('https://inera-ux-dashboard.vercel.app/api/sync-metrics');
-  const [apiToken, setApiToken] = useState('inera_ux_token_11am0nao');
+  const [endpoint, setEndpoint] = useState(() => {
+    return localStorage.getItem('inera_sus_sync_endpoint') || 'https://inera-ux-dashboard.vercel.app/api/sync-metrics';
+  });
+  const [apiToken, setApiToken] = useState(() => {
+    return localStorage.getItem('inera_sus_sync_token') || 'inera_ux_token_11am0nao';
+  });
 
   const [jsonPayload, setJsonPayload] = useState('');
   const [loadingPayload, setLoadingPayload] = useState(true);
 
+  useEffect(() => {
+    localStorage.setItem('inera_sus_sync_endpoint', endpoint);
+  }, [endpoint]);
+
+  useEffect(() => {
+    localStorage.setItem('inera_sus_sync_token', apiToken);
+  }, [apiToken]);
+
   const fetchLivePayload = async () => {
     setLoadingPayload(true);
     try {
-      // Mock push to inspect body structure
-      const res = await triggerSusMetricsSync();
-      if (res && res.data) {
-        setJsonPayload(JSON.stringify(res.data, null, 2));
-      }
+      const payload = await generateSusMetricsPayload();
+      setJsonPayload(JSON.stringify(payload, null, 2));
     } catch (e) {
       console.error("Fel vid laddning av levande JSON payload:", e);
     } finally {
@@ -70,6 +79,7 @@ const ApiView = () => {
         headers: {
           'Content-Type': 'application/json',
           'X-API-Token': apiToken,
+          'X-Sync-Endpoint': endpoint
         },
         body: JSON.stringify(parsed)
       });

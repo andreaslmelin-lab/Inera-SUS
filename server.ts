@@ -17,10 +17,9 @@ async function startServer() {
     try {
       const payload = req.body;
       const apiToken = (req.headers['x-api-token'] as string) || (req.headers['X-API-Token'] as string) || "inera_ux_token_11am0nao";
-      
-      const externalUrl = "https://inera-ux-dashboard.vercel.app/api/sync-metrics";
+      const externalUrl = (req.headers['x-sync-endpoint'] as string) || (req.headers['X-Sync-Endpoint'] as string) || "https://inera-ux-dashboard.vercel.app/api/sync-metrics";
 
-      console.log("Attempting sync to upstream...");
+      console.log(`Attempting sync to upstream URL: ${externalUrl}...`);
 
       const upstreamResponse = await fetch(externalUrl, {
         method: "POST",
