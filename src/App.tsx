@@ -322,13 +322,37 @@ const AdminView = ({
     setIsSavingPassword(true);
     setError('');
     try {
-      await updateDoc(doc(db, 'users', userToChangePassword.id), {
-        mustChangePassword: forceChangeOnLogin,
-        passwordChangedByAdminAt: serverTimestamp()
-      });
+      if (adminNewPassword) {
+        if (adminNewPassword.length < 6) {
+          setError('Lösenordet måste vara minst 6 tecken.');
+          setIsSavingPassword(false);
+          return;
+        }
 
-      if (auth.currentUser && auth.currentUser.uid === userToChangePassword.id && adminNewPassword) {
-        await updatePassword(auth.currentUser, adminNewPassword);
+        // Call our API endpoint to securely set the password of the user
+        const token = await auth.currentUser?.getIdToken();
+        const response = await fetch('/api/admin/change-password', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            uid: userToChangePassword.id,
+            newPassword: adminNewPassword,
+            forceChangeOnLogin: forceChangeOnLogin
+          })
+        });
+
+        if (!response.ok) {
+          const resData = await response.json();
+          throw new Error(resData.error || 'Misslyckades att ändra lösenordet via backend API.');
+        }
+      } else {
+        await updateDoc(doc(db, 'users', userToChangePassword.id), {
+          mustChangePassword: forceChangeOnLogin,
+          passwordChangedByAdminAt: serverTimestamp()
+        });
       }
 
       setSuccessMsg(`Lösenordsinställning sparades för ${userToChangePassword.displayName || userToChangePassword.email}. Användaren ombes byta lösenord vid nästa inloggning.`);
@@ -1989,7 +2013,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1">
-                  {/* Översikt */}
+                  {/* Dashboard */}
                   <button
                     onClick={() => {
                       setActiveTab('dashboard');
@@ -2001,53 +2025,23 @@ export default function App() {
                     }}
                     className={cn(
                       "w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm transition-all",
-                      activeTab === 'dashboard' && view === 'company' && selectedTrainFilter === 'Alla'
+                      activeTab === 'dashboard'
                         ? "bg-[#a63363] text-white shadow-sm"
                         : "text-neutral-800 hover:bg-neutral-100"
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <LayoutGrid size={18} className={activeTab === 'dashboard' && view === 'company' && selectedTrainFilter === 'Alla' ? "text-white" : "text-neutral-700"} />
-                      <span>Översikt</span>
+                      <LayoutGrid size={18} className={activeTab === 'dashboard' ? "text-white" : "text-neutral-700"} />
+                      <span>Dashboard</span>
                     </div>
-                    {activeTab === 'dashboard' && view === 'company' && selectedTrainFilter === 'Alla' && (
+                    {activeTab === 'dashboard' && (
                       <span className="bg-white/20 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
                         Aktiv
                       </span>
                     )}
                   </button>
 
-                  {/* Tågöversikt */}
-                  <button
-                    onClick={() => {
-                      setActiveTab('dashboard');
-                      setView('company');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <GitFork size={18} className="text-neutral-700" />
-                      <span>Tågöversikt</span>
-                    </div>
-                  </button>
-
-                  {/* Organisation */}
-                  <button
-                    onClick={() => {
-                      setActiveTab('dashboard');
-                      setView('company');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Building2 size={18} className="text-neutral-700" />
-                      <span>Organisation</span>
-                    </div>
-                  </button>
-
-                  {/* Usability (SUS) */}
+                  {/* SUS-omgångar */}
                   <button
                     onClick={() => {
                       setActiveTab('sus_admin');
@@ -2062,7 +2056,7 @@ export default function App() {
                   >
                     <div className="flex items-center gap-3">
                       <Activity size={18} className={activeTab === 'sus_admin' ? "text-white" : "text-neutral-700"} />
-                      <span>Usability (SUS)</span>
+                      <span>SUS-omgångar</span>
                     </div>
                     {activeTab === 'sus_admin' && (
                       <span className="bg-white/20 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
@@ -2071,133 +2065,79 @@ export default function App() {
                     )}
                   </button>
 
-                  {/* UX-Mognad */}
-                  <button
-                    onClick={() => {
-                      setActiveTab('dashboard');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Award size={18} className="text-neutral-700" />
-                      <span>UX-Mognad</span>
-                    </div>
-                  </button>
-
-                  {/* Kompetens */}
-                  <button
-                    onClick={() => {
-                      setActiveTab('dashboard');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <GraduationCap size={18} className="text-neutral-700" />
-                      <span>Kompetens</span>
-                    </div>
-                  </button>
-
-                  {/* Designsystem (IDS) */}
-                  <button
-                    onClick={() => {
-                      setActiveTab('dashboard');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Layers size={18} className="text-neutral-700" />
-                      <span>Designsystem (IDS)</span>
-                    </div>
-                  </button>
-
-                  {/* Åtgärder */}
-                  <button
-                    onClick={() => {
-                      setActiveTab('dashboard');
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <CheckSquare size={18} className="text-neutral-700" />
-                      <span>Åtgärder</span>
-                    </div>
-                  </button>
-
                   {/* Administration */}
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => {
-                        if (activeTab !== 'admin') {
-                          setActiveTab('admin');
-                        }
-                        setIsAdminExpanded(!isAdminExpanded);
-                      }}
-                      className={cn(
-                        "w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm transition-all",
-                        activeTab === 'admin'
-                          ? "bg-[#a63363] text-white shadow-sm"
-                          : "text-neutral-800 hover:bg-neutral-100"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Settings size={18} className={activeTab === 'admin' ? "text-white" : "text-neutral-700"} />
-                        <span>Administration</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {activeTab === 'admin' && (
-                          <span className="bg-white/20 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
-                            Aktiv
-                          </span>
+                  {user.email && ADMIN_EMAILS.includes(user.email) && (
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => {
+                          if (activeTab !== 'admin') {
+                            setActiveTab('admin');
+                          }
+                          setIsAdminExpanded(!isAdminExpanded);
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm transition-all",
+                          activeTab === 'admin'
+                            ? "bg-[#a63363] text-white shadow-sm"
+                            : "text-neutral-800 hover:bg-neutral-100"
                         )}
-                        <ChevronDown size={18} className={cn("transition-transform", isAdminExpanded && "rotate-180")} />
-                      </div>
-                    </button>
+                      >
+                        <div className="flex items-center gap-3">
+                          <Settings size={18} className={activeTab === 'admin' ? "text-white" : "text-neutral-700"} />
+                          <span>Administration</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {activeTab === 'admin' && (
+                            <span className="bg-white/20 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
+                              Aktiv
+                            </span>
+                          )}
+                          <ChevronDown size={18} className={cn("transition-transform", isAdminExpanded && "rotate-180")} />
+                        </div>
+                      </button>
 
-                    {isAdminExpanded && (
-                      <div className="pl-9 pr-2 space-y-1 py-1">
-                        <button 
-                          onClick={() => { setActiveTab('admin'); setAdminSubTab('users'); setIsMobileMenuOpen(false); }}
-                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'users' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
-                        >
-                          Användare
-                        </button>
-                        <button 
-                          onClick={() => { setActiveTab('admin'); setAdminSubTab('upload'); setIsMobileMenuOpen(false); }}
-                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'upload' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
-                        >
-                          Ladda upp data
-                        </button>
-                        <button 
-                          onClick={() => { setActiveTab('admin'); setAdminSubTab('api'); setIsMobileMenuOpen(false); }}
-                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'api' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
-                        >
-                          API-inställningar
-                        </button>
-                        <button 
-                          onClick={() => { setActiveTab('admin'); setAdminSubTab('rawdata'); setIsMobileMenuOpen(false); }}
-                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'rawdata' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
-                        >
-                          Rådata Export
-                        </button>
-                        <button 
-                          onClick={() => { setActiveTab('admin'); setAdminSubTab('catalog'); setIsMobileMenuOpen(false); }}
-                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'catalog' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
-                        >
-                          Produktkatalog & Mappning
-                        </button>
-                        <button 
-                          onClick={() => { setActiveTab('admin'); setAdminSubTab('grundstruktur'); setIsMobileMenuOpen(false); }}
-                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'grundstruktur' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
-                        >
-                          Inläsning Inera Grundstruktur
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                      {isAdminExpanded && (
+                        <div className="pl-9 pr-2 space-y-1 py-1">
+                          <button 
+                            onClick={() => { setActiveTab('admin'); setAdminSubTab('users'); setIsMobileMenuOpen(false); }}
+                            className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'users' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
+                          >
+                            Användare
+                          </button>
+                          <button 
+                            onClick={() => { setActiveTab('admin'); setAdminSubTab('upload'); setIsMobileMenuOpen(false); }}
+                            className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'upload' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
+                          >
+                            Ladda upp data
+                          </button>
+                          <button 
+                            onClick={() => { setActiveTab('admin'); setAdminSubTab('api'); setIsMobileMenuOpen(false); }}
+                            className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'api' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
+                          >
+                            API-inställningar
+                          </button>
+                          <button 
+                            onClick={() => { setActiveTab('admin'); setAdminSubTab('rawdata'); setIsMobileMenuOpen(false); }}
+                            className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'rawdata' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
+                          >
+                            Rådata Export
+                          </button>
+                          <button 
+                            onClick={() => { setActiveTab('admin'); setAdminSubTab('catalog'); setIsMobileMenuOpen(false); }}
+                            className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'catalog' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
+                          >
+                            Produktkatalog & Mappning
+                          </button>
+                          <button 
+                            onClick={() => { setActiveTab('admin'); setAdminSubTab('grundstruktur'); setIsMobileMenuOpen(false); }}
+                            className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'grundstruktur' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
+                          >
+                            Inläsning Inera Grundstruktur
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2951,62 +2891,18 @@ export default function App() {
                 exit={{ opacity: 0, y: -15 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
               >
-                <div className="flex flex-wrap items-center justify-between border-b border-inera-secondary-90 gap-4 pb-2 mb-6 hidden md:flex">
-                  <div className="flex gap-6 overflow-x-auto">
-                    <button 
-                      type="button"
-                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'users' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-                      onClick={() => setAdminSubTab('users')}
-                    >
-                      Användare
-                    </button>
-                    <button 
-                      type="button"
-                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'upload' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-                      onClick={() => setAdminSubTab('upload')}
-                    >
-                      Ladda upp data
-                    </button>
-                    <button 
-                      type="button"
-                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'api' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-                      onClick={() => setAdminSubTab('api')}
-                    >
-                      API-inställningar
-                    </button>
-                    <button 
-                      type="button"
-                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'rawdata' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-                      onClick={() => setAdminSubTab('rawdata')}
-                    >
-                      Rådata Export
-                    </button>
-                    <button 
-                      type="button"
-                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'catalog' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-                      onClick={() => setAdminSubTab('catalog')}
-                    >
-                      Produktkatalog & Mappning
-                    </button>
-                    <button 
-                      type="button"
-                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'grundstruktur' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-                      onClick={() => setAdminSubTab('grundstruktur')}
-                    >
-                      Inläsning Inera Grundstruktur
-                    </button>
-                  </div>
-                  {user?.email === 'andreas.l.melin@gmail.com' && (
+                {user?.email === 'andreas.l.melin@gmail.com' && (
+                  <div className="flex justify-end mb-4">
                     <button
                       type="button"
                       onClick={() => setShowResetConfirm(true)}
-                      className="btn btn--xs btn--destructive shrink-0 flex items-center gap-1.5"
+                      className="btn btn--xs btn--destructive flex items-center gap-1.5"
                     >
                       <Trash2 size={14} />
                       Nollställ Katalog
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
                 <AdminView 
                   activeAdminTab={adminSubTab}
                   onResetCatalog={user?.email === 'andreas.l.melin@gmail.com' ? () => setShowResetConfirm(true) : undefined} 

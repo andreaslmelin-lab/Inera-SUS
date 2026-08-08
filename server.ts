@@ -1,6 +1,27 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
+import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { createServer as createViteServer } from "vite";
+
+// Initialize firebase-admin robustly
+try {
+  initializeApp();
+} catch (e) {
+  try {
+    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+      initializeApp({
+        projectId: config.projectId,
+      });
+    }
+  } catch (err) {
+    console.warn("Could not fully initialize firebase-admin:", err);
+  }
+}
 
 async function startServer() {
   const expressApp = express();
@@ -8,6 +29,54 @@ async function startServer() {
 
   expressApp.use(express.json({ limit: "50mb" }));
   expressApp.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // Admin Change Password Route
+  expressApp.post("/api/admin/change-password", async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ error: "Oauktoriserad. Logga in igen." });
+      }
+      const token = authHeader.split(" ")[1];
+      const decodedToken = await getAuth().verifyIdToken(token);
+      const callerUid = decodedToken.uid;
+      
+      // Verify caller is admin
+      const callerDoc = await getFirestore().collection("users").doc(callerUid).get();
+      const callerData = callerDoc.data();
+      const callerEmail = callerData?.email?.toLowerCase();
+      
+      const ADMIN_EMAILS = ['andreas.melin@inera.se', 'andreas.melin@inera', 'andreas.l.melin@gmail.com'];
+      if (!callerEmail || !ADMIN_EMAILS.includes(callerEmail)) {
+        return res.status(403).json({ error: "Åtkomst nekad. Endast administratörer kan ändra lösenord." });
+      }
+      
+      const { uid, newPassword, forceChangeOnLogin } = req.body;
+      if (!uid || !newPassword) {
+        return res.status(400).json({ error: "Användar-ID och nytt lösenord saknas." });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({ error: "Lösenordet måste vara minst 6 tecken." });
+      }
+      
+      // Update password in Auth
+      await getAuth().updateUser(uid, {
+        password: newPassword
+      });
+      
+      // Update mustChangePassword in Firestore
+      await getFirestore().collection("users").doc(uid).update({
+        mustChangePassword: forceChangeOnLogin === undefined ? true : forceChangeOnLogin,
+        passwordChangedByAdminAt: FieldValue.serverTimestamp()
+      });
+      
+      return res.json({ success: true });
+    } catch (err: any) {
+      console.error("Error changing password:", err);
+      return res.status(500).json({ error: err.message || "Misslyckades att uppdatera lösenordet." });
+    }
+  });
 
   // Proxy API route to avoid CORS and secure tokens server-side
   expressApp.post("/api/sync-metrics", async (req, res) => {
