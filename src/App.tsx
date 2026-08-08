@@ -8,7 +8,8 @@ import {
   TrendingUp, Users, MessageSquare, Filter, FileSpreadsheet,
   AlertCircle, CheckCircle2, Loader2, Search, ArrowLeft,
   Info, Calendar, ArrowUpRight, ArrowDownRight, Trash2, Settings,
-  User as LucideUser, RefreshCw
+  User as LucideUser, RefreshCw, Menu, X, ChevronDown, LayoutGrid,
+  GitFork, Building2, Activity, Award, GraduationCap, Layers, CheckSquare
 } from 'lucide-react';
 import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from './firebase';
 import { Product, ProductService, Measurement, MeasurementService, ResponseData, Variant } from './services';
@@ -39,28 +40,43 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
   const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState(initialError);
   const [message, setMessage] = useState('');
-
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanEmail = email.trim();
+    const cleanPassword = password;
+    const lowerEmail = cleanEmail.toLowerCase();
+
     try {
       setError('');
       setMessage('');
-      
+
       if (isForgotPassword) {
-        if (!email) {
+        if (!cleanEmail) {
           setError('Ange din e-postadress för att återställa lösenordet.');
           return;
         }
-        await sendPasswordResetEmail(auth, email);
-        setMessage('Länk för att återställa lösenordet har skickats till din e-postadress.');
+        await sendPasswordResetEmail(auth, cleanEmail);
+        setMessage(`En återställningslänk har skickats till ${cleanEmail}. Följ instruktionerna i e-postmeddelandet om du vill välja ett nytt lösenord.`);
         setIsForgotPassword(false);
         setPassword('');
         return;
       }
 
+      if (!cleanEmail || !cleanPassword) {
+        setError('Ange både e-postadress och lösenord.');
+        return;
+      }
+
+      const isAllowedDomain = lowerEmail.endsWith('@inera.se') || lowerEmail.endsWith('@gmail.com') || ADMIN_EMAILS.includes(lowerEmail);
+
+      if (!isAllowedDomain) {
+        setError('Bara e-postadresser från inera.se eller godkända domäner är tillåtna.');
+        return;
+      }
+
       if (isRegistering) {
         if (!inviteCode.trim()) {
-          setError('Det var en felaktig inbjudningskod, kontakta ux@inera.se för korrekt kod.');
+          setError('Inbjudningskod krävs.');
           return;
         }
         const cleanCode = inviteCode.trim().toLowerCase();
@@ -68,30 +84,36 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
           setError('Det var en felaktig inbjudningskod, kontakta ux@inera.se för korrekt kod.');
           return;
         }
-        if (!email.toLowerCase().endsWith('@inera.se')) {
-          setError('Bara e-postadresser från inera.se är tillåtna.');
-          return;
+
+        try {
+          await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+        } catch (regErr: any) {
+          if (regErr.code === 'auth/email-already-in-use') {
+            setError('Ett konto med den här e-postadressen finns redan. Vänligen logga in.');
+            setIsRegistering(false);
+          } else if (regErr.code === 'auth/weak-password') {
+            setError('Lösenordet måste vara minst 6 tecken långt.');
+          } else {
+            setError(regErr.message || 'Ett fel uppstod vid registrering.');
+          }
         }
-        await createUserWithEmailAndPassword(auth, email, password);
       } else {
-        if (!email.toLowerCase().endsWith('@inera.se')) {
-          setError('Bara e-postadresser från inera.se är tillåtna.');
-          return;
+        try {
+          await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+        } catch (signInErr: any) {
+          if (
+            signInErr.code === 'auth/invalid-credential' ||
+            signInErr.code === 'auth/wrong-password' ||
+            signInErr.code === 'auth/user-not-found'
+          ) {
+            setError('Felaktig e-postadress eller lösenord.');
+          } else {
+            setError(signInErr.message || 'Ett fel uppstod vid inloggning.');
+          }
         }
-        await signInWithEmailAndPassword(auth, email, password);
       }
     } catch (err: any) {
-      if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
-        setError('Felaktig e-post eller lösenord.');
-      } else if (err.code === 'auth/email-already-in-use') {
-        setError('Ett konto med den här e-postadressen finns redan.');
-      } else if (err.code === 'auth/weak-password') {
-        setError('Lösenordet måste vara minst 6 tecken långt.');
-      } else if (err.code === 'auth/user-not-found') {
-        setError('Det finns inget konto med den här e-postadressen.');
-      } else {
-        setError(err.message || 'Ett fel uppstod vid inloggning.');
-      }
+      setError(err.message || 'Ett fel uppstod.');
     }
   };
 
@@ -898,6 +920,8 @@ export default function App() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAdminExpanded, setIsAdminExpanded] = useState(false);
 
   const handleManualSync = async () => {
     setIsManualSyncing(true);
@@ -936,7 +960,7 @@ export default function App() {
         let shouldBlock = false;
         if (userSnap.exists()) {
           const userData = userSnap.data();
-          if (userData.isBlocked) {
+          if (userData.isBlocked && user.email?.toLowerCase() !== 'andreas.melin@inera.se') {
             shouldBlock = true;
           }
         }
@@ -1654,7 +1678,7 @@ export default function App() {
     <div className="min-h-screen bg-white pb-12">
       {/* Header */}
       <header className="bg-white border-b border-inera-secondary-90 px-4 sm:px-6 sticky top-0 z-40 shadow-2xs">
-        <div className="max-w-[80rem] mx-auto flex flex-wrap items-center justify-between gap-4 py-2.5">
+        <div className="max-w-[80rem] mx-auto flex items-center justify-between gap-4 py-2.5">
           {/* Brand & Nav */}
           <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
             <div className="flex items-center gap-3 shrink-0">
@@ -1669,7 +1693,7 @@ export default function App() {
             <div className="h-7 w-px bg-inera-secondary-90 hidden md:block shrink-0" />
 
             {/* Horizontal Navigation Links */}
-            <nav className="flex items-center gap-1 sm:gap-2">
+            <nav className="hidden md:flex items-center gap-1 sm:gap-2">
               <HeaderNavItem 
                 icon={LayoutDashboard} 
                 label="Dashboard" 
@@ -1693,9 +1717,9 @@ export default function App() {
             </nav>
           </div>
 
-          {/* User Badge & Logout */}
+          {/* User Badge & Logout & Mobile Menu Button */}
           <div className="flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-2.5 px-3 py-1.5 bg-[#fbf9f7] border border-inera-secondary-90 rounded-lg shadow-2xs">
+            <div className="hidden sm:flex items-center gap-2.5 px-3 py-1.5 bg-[#fbf9f7] border border-inera-secondary-90 rounded-lg shadow-2xs">
               <div className="w-6 h-6 rounded-full bg-white border border-inera-secondary-90 flex items-center justify-center text-inera-accent-40">
                 <LucideUser size={14} className="text-inera-accent-40" />
               </div>
@@ -1706,15 +1730,292 @@ export default function App() {
 
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1.5 text-inera-primary-40 hover:text-inera-primary-30 transition-colors py-1.5 px-2.5 rounded hover:bg-inera-primary-95 text-xs font-bold"
+              className="hidden sm:flex items-center gap-1.5 text-inera-primary-40 hover:text-inera-primary-30 transition-colors py-1.5 px-2.5 rounded hover:bg-inera-primary-95 text-xs font-bold"
               title="Logga ut"
             >
               <LogOut size={16} />
-              <span className="hidden sm:inline">Logga ut</span>
+              <span>Logga ut</span>
+            </button>
+
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="md:hidden p-2 text-inera-neutral-20 hover:text-inera-primary-40 rounded-xl hover:bg-inera-secondary-95 transition-colors"
+              aria-label="Öppna navigeringsmeny"
+            >
+              <Menu size={24} />
             </button>
           </div>
         </div>
       </header>
+
+      {/* Mobile Navigation Drawer */}
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <div className="fixed inset-0 z-50 flex flex-col bg-black/40 backdrop-blur-xs md:hidden">
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.2 }}
+              className="w-full bg-white flex flex-col max-h-[92vh] rounded-b-2xl shadow-2xl overflow-hidden"
+            >
+              {/* Drawer Header */}
+              <div className="flex items-center justify-between p-4 border-b border-inera-secondary-90 bg-white shrink-0">
+                <div className="flex items-center gap-3">
+                  <img src={ineraLogo} alt="Inera Logo" className="h-7 w-auto" />
+                  <div className="h-7 w-px bg-inera-secondary-90" />
+                  <div className="flex flex-col leading-tight">
+                    <span className="text-[#a63363] font-bold text-base font-display">Navigeringsmeny</span>
+                    <span className="text-xs text-inera-neutral-40 font-normal">Inera UX-Mognad & Mätningar</span>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="p-2 bg-neutral-100 hover:bg-neutral-200 rounded-xl text-neutral-600 transition-colors"
+                  aria-label="Stäng meny"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Drawer Navigation List */}
+              <div className="p-4 overflow-y-auto space-y-4 flex-1">
+                <div className="text-[11px] font-bold text-neutral-900 uppercase tracking-wider px-1">
+                  HUVUDVYER
+                </div>
+
+                <div className="space-y-1">
+                  {/* Översikt */}
+                  <button
+                    onClick={() => {
+                      setActiveTab('dashboard');
+                      setView('company');
+                      setSelectedProductId(null);
+                      setSelectedTrainFilter('Alla');
+                      setSelectedTeamFilter('Alla');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm transition-all",
+                      activeTab === 'dashboard' && view === 'company' && selectedTrainFilter === 'Alla'
+                        ? "bg-[#a63363] text-white shadow-sm"
+                        : "text-neutral-800 hover:bg-neutral-100"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <LayoutGrid size={18} className={activeTab === 'dashboard' && view === 'company' && selectedTrainFilter === 'Alla' ? "text-white" : "text-neutral-700"} />
+                      <span>Översikt</span>
+                    </div>
+                    {activeTab === 'dashboard' && view === 'company' && selectedTrainFilter === 'Alla' && (
+                      <span className="bg-white/20 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
+                        Aktiv
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Tågöversikt */}
+                  <button
+                    onClick={() => {
+                      setActiveTab('dashboard');
+                      setView('company');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <GitFork size={18} className="text-neutral-700" />
+                      <span>Tågöversikt</span>
+                    </div>
+                  </button>
+
+                  {/* Organisation */}
+                  <button
+                    onClick={() => {
+                      setActiveTab('dashboard');
+                      setView('company');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Building2 size={18} className="text-neutral-700" />
+                      <span>Organisation</span>
+                    </div>
+                  </button>
+
+                  {/* Usability (SUS) */}
+                  <button
+                    onClick={() => {
+                      setActiveTab('sus_admin');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className={cn(
+                      "w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm transition-all",
+                      activeTab === 'sus_admin'
+                        ? "bg-[#a63363] text-white shadow-sm"
+                        : "text-neutral-800 hover:bg-neutral-100"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Activity size={18} className={activeTab === 'sus_admin' ? "text-white" : "text-neutral-700"} />
+                      <span>Usability (SUS)</span>
+                    </div>
+                    {activeTab === 'sus_admin' && (
+                      <span className="bg-white/20 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
+                        Aktiv
+                      </span>
+                    )}
+                  </button>
+
+                  {/* UX-Mognad */}
+                  <button
+                    onClick={() => {
+                      setActiveTab('dashboard');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Award size={18} className="text-neutral-700" />
+                      <span>UX-Mognad</span>
+                    </div>
+                  </button>
+
+                  {/* Kompetens */}
+                  <button
+                    onClick={() => {
+                      setActiveTab('dashboard');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <GraduationCap size={18} className="text-neutral-700" />
+                      <span>Kompetens</span>
+                    </div>
+                  </button>
+
+                  {/* Designsystem (IDS) */}
+                  <button
+                    onClick={() => {
+                      setActiveTab('dashboard');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Layers size={18} className="text-neutral-700" />
+                      <span>Designsystem (IDS)</span>
+                    </div>
+                  </button>
+
+                  {/* Åtgärder */}
+                  <button
+                    onClick={() => {
+                      setActiveTab('dashboard');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm text-neutral-800 hover:bg-neutral-100 transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <CheckSquare size={18} className="text-neutral-700" />
+                      <span>Åtgärder</span>
+                    </div>
+                  </button>
+
+                  {/* Administration */}
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => {
+                        if (activeTab !== 'admin') {
+                          setActiveTab('admin');
+                        }
+                        setIsAdminExpanded(!isAdminExpanded);
+                      }}
+                      className={cn(
+                        "w-full flex items-center justify-between px-4 py-3 rounded-xl font-bold text-sm transition-all",
+                        activeTab === 'admin'
+                          ? "bg-[#a63363] text-white shadow-sm"
+                          : "text-neutral-800 hover:bg-neutral-100"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Settings size={18} className={activeTab === 'admin' ? "text-white" : "text-neutral-700"} />
+                        <span>Administration</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {activeTab === 'admin' && (
+                          <span className="bg-white/20 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
+                            Aktiv
+                          </span>
+                        )}
+                        <ChevronDown size={18} className={cn("transition-transform", isAdminExpanded && "rotate-180")} />
+                      </div>
+                    </button>
+
+                    {isAdminExpanded && (
+                      <div className="pl-9 pr-2 space-y-1 py-1">
+                        <button 
+                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                        >
+                          Användare
+                        </button>
+                        <button 
+                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                        >
+                          Ladda upp data
+                        </button>
+                        <button 
+                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                        >
+                          API-inställningar
+                        </button>
+                        <button 
+                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                        >
+                          Rådata Export
+                        </button>
+                        <button 
+                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                        >
+                          Produktkatalog & Mappning
+                        </button>
+                        <button 
+                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
+                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                        >
+                          Inläsning Inera Grundstruktur
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Drawer Footer */}
+              <div className="p-4 border-t border-neutral-200 bg-neutral-50 flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-700 truncate">
+                  <LucideUser size={16} className="text-[#a63363] shrink-0" />
+                  <span className="truncate">{user?.email}</span>
+                </div>
+                <button
+                  onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}
+                  className="shrink-0 flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-[#a63363]/30 bg-[#fdf2f6] text-[#a63363] font-bold text-xs hover:bg-[#fce4ee] transition-colors"
+                >
+                  <LogOut size={14} />
+                  <span>Logga ut</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Sync Confirmation Banner */}
       {syncNotice && (
