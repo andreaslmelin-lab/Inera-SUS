@@ -9,9 +9,10 @@ import {
   AlertCircle, CheckCircle2, Loader2, Search, ArrowLeft,
   Info, Calendar, ArrowUpRight, ArrowDownRight, Trash2, Settings,
   User as LucideUser, RefreshCw, Menu, X, ChevronDown, LayoutGrid,
-  GitFork, Building2, Activity, Award, GraduationCap, Layers, CheckSquare
+  GitFork, Building2, Activity, Award, GraduationCap, Layers, CheckSquare,
+  Edit3, Key, Lock, ShieldAlert
 } from 'lucide-react';
-import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from './firebase';
+import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updatePassword } from './firebase';
 import { Product, ProductService, Measurement, MeasurementService, ResponseData, Variant } from './services';
 import { loadProductMappings } from './services/catalogMappingService';
 import { triggerSusMetricsSync } from './services/syncService';
@@ -229,18 +230,31 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
 };
 
 const AdminView = ({ 
-  onResetCatalog,
-  uploadNode
+  activeAdminTab = 'users',
+  uploadNode,
+  onResetCatalog
 }: { 
-  onResetCatalog?: () => void;
+  activeAdminTab?: 'users' | 'upload' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur';
   uploadNode?: React.ReactNode;
+  onResetCatalog?: () => void;
 }) => {
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'upload' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur'>('users');
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // Modals state
   const [userToDelete, setUserToDelete] = useState<any | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  const [userToEditName, setUserToEditName] = useState<any | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
+
+  const [userToChangePassword, setUserToChangePassword] = useState<any | null>(null);
+  const [adminNewPassword, setAdminNewPassword] = useState('');
+  const [forceChangeOnLogin, setForceChangeOnLogin] = useState(true);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -284,60 +298,65 @@ const AdminView = ({
     }
   };
 
+  const handleSaveName = async () => {
+    if (!userToEditName) return;
+    setIsSavingName(true);
+    setError('');
+    try {
+      await updateDoc(doc(db, 'users', userToEditName.id), {
+        displayName: editDisplayName.trim()
+      });
+      setSuccessMsg(`Namnet uppdaterades för ${userToEditName.email}`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+      setUserToEditName(null);
+      await fetchUsers();
+    } catch (err: any) {
+      setError(err.message || 'Kunde inte uppdatera namnet');
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleSavePasswordChange = async () => {
+    if (!userToChangePassword) return;
+    setIsSavingPassword(true);
+    setError('');
+    try {
+      await updateDoc(doc(db, 'users', userToChangePassword.id), {
+        mustChangePassword: forceChangeOnLogin,
+        passwordChangedByAdminAt: serverTimestamp()
+      });
+
+      if (auth.currentUser && auth.currentUser.uid === userToChangePassword.id && adminNewPassword) {
+        await updatePassword(auth.currentUser, adminNewPassword);
+      }
+
+      setSuccessMsg(`Lösenordsinställning sparades för ${userToChangePassword.displayName || userToChangePassword.email}. Användaren ombes byta lösenord vid nästa inloggning.`);
+      setTimeout(() => setSuccessMsg(''), 5000);
+      setUserToChangePassword(null);
+      setAdminNewPassword('');
+      await fetchUsers();
+    } catch (err: any) {
+      setError(err.message || 'Kunde inte uppdatera lösenordet');
+    } finally {
+      setIsSavingPassword(false);
+    }
+  };
+
+  const handleSendResetEmail = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setSuccessMsg(`Återställningslänk skickad till ${email}`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err: any) {
+      setError(err.message || 'Kunde inte skicka återställningslänk');
+    }
+  };
+
   if (loading) return <div className="p-8 text-center"><Loader2 className="animate-spin text-inera-primary-40 mx-auto" size={32} /></div>;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between border-b border-inera-secondary-90 gap-4 pb-1">
-        <div className="flex gap-6 overflow-x-auto">
-          <button 
-            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'users' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-            onClick={() => setActiveAdminTab('users')}
-          >
-            Användare
-          </button>
-          <button 
-            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'upload' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-            onClick={() => setActiveAdminTab('upload')}
-          >
-            Ladda upp data
-          </button>
-          <button 
-            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'api' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-            onClick={() => setActiveAdminTab('api')}
-          >
-            API-inställningar
-          </button>
-          <button 
-            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'rawdata' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-            onClick={() => setActiveAdminTab('rawdata')}
-          >
-            Rådata Export
-          </button>
-          <button 
-            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'catalog' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-            onClick={() => setActiveAdminTab('catalog')}
-          >
-            Produktkatalog & Mappning
-          </button>
-          <button 
-            className={cn("text-sm font-bold pb-3 border-b-2 transition-colors whitespace-nowrap", activeAdminTab === 'grundstruktur' ? "border-inera-primary-40 text-inera-primary-40" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
-            onClick={() => setActiveAdminTab('grundstruktur')}
-          >
-            Inläsning Inera Grundstruktur
-          </button>
-        </div>
-        {onResetCatalog && (
-          <button
-            onClick={onResetCatalog}
-            className="btn btn--xs btn--destructive mb-2 shrink-0 flex items-center gap-1.5"
-          >
-            <Trash2 size={14} />
-            Nollställ Katalog
-          </button>
-        )}
-      </div>
-
       <AnimatePresence mode="wait">
         {activeAdminTab === 'users' && (
           <motion.div
@@ -348,11 +367,18 @@ const AdminView = ({
             transition={{ duration: 0.2 }}
             className="card p-6 shadow-md border-inera-secondary-90 bg-white"
           >
-            <h2 className="text-xl font-bold font-display text-inera-neutral-10 mb-4">Användarhantering</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-bold font-display text-inera-neutral-10">Användarhantering</h2>
+                <p className="text-xs text-inera-neutral-40">Hantera konton, uppdatera namn, sätt nya lösenord och blockera användare.</p>
+              </div>
+            </div>
+
             {error && <div className="text-inera-error-40 mb-4 bg-inera-error-95 border-inera-error-40 border p-4 rounded-lg">{error}</div>}
+            {successMsg && <div className="text-inera-success-40 mb-4 bg-inera-success-95 border-inera-success-40 border p-4 rounded-lg flex items-center gap-2"><CheckCircle2 size={18} /><span>{successMsg}</span></div>}
             
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[600px]">
+              <table className="w-full text-left border-collapse min-w-[700px]">
                 <thead>
                   <tr className="border-b border-inera-secondary-90 text-sm text-inera-neutral-40">
                     <th className="pb-2 font-bold px-2">Namn</th>
@@ -374,7 +400,21 @@ const AdminView = ({
                       transition={{ duration: 0.2 }}
                       className="border-b border-inera-secondary-95 last:border-0 hover:bg-inera-secondary-95/50"
                     >
-                      <td className="py-3 px-2 text-sm text-inera-neutral-10 font-medium">{u.displayName || 'Okänd'}</td>
+                      <td className="py-3 px-2 text-sm text-inera-neutral-10 font-medium">
+                        <div className="flex items-center gap-2">
+                          <span>{u.displayName || 'Ej angivet'}</span>
+                          <button
+                            onClick={() => {
+                              setUserToEditName(u);
+                              setEditDisplayName(u.displayName || '');
+                            }}
+                            className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
+                            title="Redigera namn"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                        </div>
+                      </td>
                       <td className="py-3 px-2 text-sm text-inera-neutral-20">{u.email}</td>
                       <td className="py-3 px-2 text-sm text-inera-neutral-20">
                         {u.lastLoggedIn ? format(u.lastLoggedIn.toDate ? u.lastLoggedIn.toDate() : new Date(u.lastLoggedIn.seconds * 1000), 'yyyy-MM-dd HH:mm') : 'Aldrig'}
@@ -382,21 +422,37 @@ const AdminView = ({
                       <td className="py-3 px-2 text-sm">
                         {u.isBlocked ? (
                           <span className="bg-inera-error-95 text-inera-error-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-error-40">Blockerad</span>
+                        ) : u.mustChangePassword ? (
+                          <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-amber-300 flex items-center gap-1 w-max">
+                            <Lock size={10} /> Måste byta lösenord
+                          </span>
                         ) : (
                           <span className="bg-inera-success-95 text-inera-success-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-success-40">Aktiv</span>
                         )}
                       </td>
                       <td className="py-3 px-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => {
+                              setUserToChangePassword(u);
+                              setAdminNewPassword('');
+                              setForceChangeOnLogin(true);
+                            }}
+                            className="btn btn--xs btn--secondary flex items-center gap-1"
+                            title="Byt lösenord för användaren"
+                          >
+                            <Key size={13} />
+                            Byt lösenord
+                          </button>
                           <button 
                             onClick={() => toggleBlock(u.id, !!u.isBlocked)}
-                            className={cn("btn btn--s", u.isBlocked ? "btn--secondary" : "btn--tertiary")}
+                            className={cn("btn btn--xs", u.isBlocked ? "btn--secondary" : "btn--tertiary")}
                           >
                             {u.isBlocked ? 'Avblockera' : 'Blockera'}
                           </button>
                           <button 
                             onClick={() => setUserToDelete(u)}
-                            className="btn btn--s btn--destructive flex items-center gap-1"
+                            className="btn btn--xs btn--destructive flex items-center gap-1"
                             title="Radera användare"
                           >
                             <Trash2 size={13} />
@@ -410,6 +466,116 @@ const AdminView = ({
                 </motion.tbody>
               </table>
             </div>
+
+            {/* Edit Name Modal */}
+            {userToEditName && (
+              <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                <div className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4">
+                  <div className="flex items-center gap-3 text-inera-primary-40">
+                    <Edit3 size={22} />
+                    <h3 className="text-lg font-bold font-display text-inera-neutral-10">Redigera användarnamn</h3>
+                  </div>
+                  <p className="text-xs text-inera-neutral-40">Uppdatera det namn som visas i gränssnittet och i menyer för användaren ({userToEditName.email}).</p>
+                  
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-inera-neutral-30">Fullständigt namn / Visningsnamn</label>
+                    <input
+                      type="text"
+                      value={editDisplayName}
+                      onChange={(e) => setEditDisplayName(e.target.value)}
+                      placeholder="t.ex. Anna Svensson"
+                      className="input w-full text-sm"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button 
+                      onClick={() => setUserToEditName(null)}
+                      disabled={isSavingName}
+                      className="btn btn--m btn--secondary"
+                    >
+                      Avbryt
+                    </button>
+                    <button 
+                      onClick={handleSaveName}
+                      disabled={isSavingName}
+                      className="btn btn--m btn--primary flex items-center gap-2"
+                    >
+                      {isSavingName ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                      Spara namn
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Admin Change Password Modal */}
+            {userToChangePassword && (
+              <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                <div className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4">
+                  <div className="flex items-center gap-3 text-[#a63363]">
+                    <Key size={22} />
+                    <h3 className="text-lg font-bold font-display text-inera-neutral-10">Byt lösenord</h3>
+                  </div>
+                  <p className="text-xs text-inera-neutral-40">
+                    Sätt nytt lösenord eller aktivera krav på lösenordsbyte för <strong>{userToChangePassword.displayName || userToChangePassword.email}</strong>.
+                  </p>
+
+                  <div className="space-y-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-inera-neutral-30">Nytt lösenord (valfritt / tillfälligt)</label>
+                      <input
+                        type="password"
+                        value={adminNewPassword}
+                        onChange={(e) => setAdminNewPassword(e.target.value)}
+                        placeholder="Ange ett nytt lösenord..."
+                        className="input w-full text-sm"
+                      />
+                    </div>
+
+                    <label className="flex items-center gap-2 text-xs font-bold text-inera-neutral-20 cursor-pointer pt-1">
+                      <input 
+                        type="checkbox" 
+                        checked={forceChangeOnLogin}
+                        onChange={(e) => setForceChangeOnLogin(e.target.checked)}
+                        className="rounded border-neutral-300 text-inera-primary-40 focus:ring-inera-primary-40"
+                      />
+                      <span>Tvinga användaren att byta lösenord vid nästa inloggning</span>
+                    </label>
+
+                    <div className="pt-2 border-t border-inera-secondary-90">
+                      <button
+                        type="button"
+                        onClick={() => handleSendResetEmail(userToChangePassword.email)}
+                        className="text-xs font-bold text-inera-primary-40 hover:underline flex items-center gap-1"
+                      >
+                        <RefreshCw size={12} />
+                        Skicka länk för lösenordsåterställning per e-post
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-3 border-t border-inera-secondary-90">
+                    <button 
+                      onClick={() => setUserToChangePassword(null)}
+                      disabled={isSavingPassword}
+                      className="btn btn--m btn--secondary"
+                    >
+                      Avbryt
+                    </button>
+                    <button 
+                      onClick={handleSavePasswordChange}
+                      disabled={isSavingPassword}
+                      className="btn btn--m btn--primary flex items-center gap-2"
+                    >
+                      {isSavingPassword ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
+                      Spara inställningar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Delete User Warning Modal */}
             {userToDelete && (
@@ -561,6 +727,115 @@ const SusLegend = () => (
   </div>
 );
 
+const ForcePasswordChangeModal = ({ 
+  user, 
+  onPasswordChanged 
+}: { 
+  user: User; 
+  onPasswordChanged: () => void; 
+}) => {
+  const [newPass, setNewPass] = useState('');
+  const [confirmPass, setConfirmPass] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPass.length < 6) {
+      setErr('Lösenordet måste vara minst 6 tecken.');
+      return;
+    }
+    if (newPass !== confirmPass) {
+      setErr('Lösenorden matchar inte.');
+      return;
+    }
+
+    setLoading(true);
+    setErr('');
+    try {
+      if (auth.currentUser) {
+        await updatePassword(auth.currentUser, newPass);
+      }
+      await updateDoc(doc(db, 'users', user.uid), {
+        mustChangePassword: false,
+        passwordLastChangedAt: serverTimestamp()
+      });
+      onPasswordChanged();
+    } catch (e: any) {
+      console.error("Fel vid lösenordsbyte:", e);
+      if (e.code === 'auth/requires-recent-login') {
+        setErr('Säkerhetskrav: Logga ut och in igen för att byta lösenord.');
+      } else {
+        setErr(e.message || 'Kunde inte uppdatera lösenordet.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-neutral-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="card p-6 shadow-2xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4"
+      >
+        <div className="flex items-center gap-3 text-amber-700 bg-amber-50 p-3 rounded-xl border border-amber-200">
+          <ShieldAlert size={28} className="shrink-0 text-amber-600" />
+          <div>
+            <h3 className="text-base font-bold text-amber-900 font-display">Lösenordsbyte krävs</h3>
+            <p className="text-xs text-amber-800">Din administratör har begärt att du byter lösenord för ditt konto.</p>
+          </div>
+        </div>
+
+        {err && (
+          <div className="p-3 bg-inera-error-95 border border-inera-error-40 text-inera-error-40 text-xs font-bold rounded-lg flex items-center gap-2">
+            <AlertCircle size={16} />
+            <span>{err}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-inera-neutral-20">Nytt lösenord (minst 6 tecken)</label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={newPass}
+              onChange={(e) => setNewPass(e.target.value)}
+              placeholder="Ange nytt lösenord..."
+              className="input w-full text-sm"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-inera-neutral-20">Bekräfta nytt lösenord</label>
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={confirmPass}
+              onChange={(e) => setConfirmPass(e.target.value)}
+              placeholder="Upprepa nytt lösenord..."
+              className="input w-full text-sm"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn btn--m btn--primary w-full flex items-center justify-center gap-2 mt-4"
+          >
+            {loading ? <Loader2 size={18} className="animate-spin" /> : <Lock size={18} />}
+            <span>Spara nytt lösenord & Fortsätt</span>
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
 // --- Main App ---
 
 export default function App() {
@@ -573,8 +848,10 @@ export default function App() {
   }
 
   const [user, setUser] = useState<User | null>(null);
+  const [currentUserDoc, setCurrentUserDoc] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'admin' | 'api' | 'rawdata' | 'sus_admin'>('dashboard');
+  const [adminSubTab, setAdminSubTab] = useState<'users' | 'upload' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur'>('users');
   const [authError, setAuthError] = useState<string>('');
   const [view, setView] = useState<'company' | 'product'>('company');
   const [products, setProducts] = useState<Product[]>([]);
@@ -606,6 +883,12 @@ export default function App() {
     if (user) {
       loadProductMappings().then(setProductMappings);
 
+      const unsubUserDoc = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+        if (snap.exists()) {
+          setCurrentUserDoc(snap.data());
+        }
+      });
+
       const qSurveys = query(collection(db, 'susSurveys'));
       const unsubSurveys = onSnapshot(qSurveys, (snap) => {
         const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -625,10 +908,13 @@ export default function App() {
       });
 
       return () => {
+        unsubUserDoc();
         unsubSurveys();
         unsubSus();
         unsubResp();
       };
+    } else {
+      setCurrentUserDoc(null);
     }
   }, [user]);
 
@@ -639,6 +925,7 @@ export default function App() {
       .replace(/ä/g, 'a')
       .replace(/ö/g, 'o')
       .replace(/é/g, 'e')
+      .replace(/motetjanst/g, 'motestjanst')
       .replace(/^prod[-_]/i, '')
       .replace(/^product[-_]/i, '')
       .replace(/[^a-z0-9]/g, ' ')
@@ -667,13 +954,244 @@ export default function App() {
     const tokensB = normB.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
 
     if (tokensA.length > 0 && tokensB.length > 0) {
-      const common = tokensA.filter(t => tokensB.some(tb => tb.includes(t) || t.includes(tb)));
+      const common = tokensA.filter(t => tokensB.some(tb => {
+        if (tb.includes(t) || t.includes(tb)) return true;
+        if (t.length >= 5 && tb.length >= 5 && (t.slice(0, 5) === tb.slice(0, 5) || t.startsWith(tb.slice(0, 5)))) return true;
+        return false;
+      }));
       const minTokens = Math.min(tokensA.length, tokensB.length);
       if (common.length >= minTokens) return true;
     }
 
     return false;
   };
+
+  // Advanced Filters
+  const [selectedTrainFilter, setSelectedTrainFilter] = useState<string>('Alla');
+  const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>('Alla');
+  const [susRange, setSusRange] = useState<{ min: number; max: number }>({ min: 0, max: 100 });
+  const [categoryFilter, setCategoryFilter] = useState<string>('Alla');
+
+  // Helper to match a raw response item to a product ID
+  const getMatchedProductId = (
+    item: any,
+    productsList: Product[],
+    surveys: any[],
+    mappings: Record<string, string>
+  ): string | null => {
+    const pIdSet = new Set(productsList.map(p => p.id));
+
+    if (item.surveyId) {
+      const survey = surveys.find(s => s.id === item.surveyId);
+      if (survey) {
+        const foundP = productsList.find(p => 
+          p.id === survey.productId || 
+          isNameMatch(survey.productId, p.id) || 
+          isNameMatch(survey.productId, p.name) || 
+          isNameMatch(survey.name, p.name)
+        );
+        if (foundP) return foundP.id;
+      }
+    }
+
+    const rawProdId = (item.productId || '').trim();
+    if (rawProdId && pIdSet.has(rawProdId)) {
+      return rawProdId;
+    }
+
+    const rawVariant = (item.variantName || '').trim();
+    const mappedVariant = mappings[rawVariant] || mappings[rawProdId];
+
+    const foundP = productsList.find(p => 
+      (rawProdId && (p.id === rawProdId || isNameMatch(rawProdId, p.id) || isNameMatch(rawProdId, p.name))) ||
+      (rawVariant && (isNameMatch(rawVariant, p.name) || (mappedVariant && isNameMatch(mappedVariant, p.name))))
+    );
+
+    if (foundP) return foundP.id;
+    if (rawProdId) return rawProdId;
+    return null;
+  };
+
+  // Combine ALL raw responses across all sources
+  const allCombinedResponses = useMemo(() => {
+    const list: ResponseData[] = [];
+    const seenIds = new Set<string>();
+
+    allRawResponsesList.forEach(item => {
+      if (item.id && seenIds.has(item.id)) return;
+      if (item.id) seenIds.add(item.id);
+
+      const score = Number(item.susScore);
+      if (isNaN(score) || score < 0 || score > 100) return;
+
+      let submitDate = item.submitDate || item.submittedAt || item.createdAt;
+      if (submitDate?.toDate) submitDate = submitDate.toDate();
+      else if (typeof submitDate === 'string' || typeof submitDate === 'number') submitDate = new Date(submitDate);
+      if (!submitDate || isNaN(new Date(submitDate).getTime())) submitDate = new Date();
+      else submitDate = new Date(submitDate);
+
+      let startDate = item.startDate;
+      if (startDate?.toDate) startDate = startDate.toDate();
+      else if (typeof startDate === 'string' || typeof startDate === 'number') startDate = new Date(startDate);
+      if (!startDate || isNaN(new Date(startDate).getTime())) startDate = submitDate;
+      else startDate = new Date(startDate);
+
+      const matchedPId = getMatchedProductId(item, products, surveysList, productMappings);
+
+      list.push({
+        id: item.id || `raw-${list.length}`,
+        measurementId: item.measurementId || 'csv-upload',
+        productId: matchedPId || item.productId || 'unmapped',
+        variantName: item.variantName || 'Generell',
+        susScore: score,
+        answers: item.answers || [],
+        comment: item.comment || '',
+        submitDate,
+        startDate,
+        otherText: item.otherText || ''
+      });
+    });
+
+    susResponsesList.forEach(item => {
+      if (item.id && seenIds.has(item.id)) return;
+      if (item.id) seenIds.add(item.id);
+
+      const score = Number(item.susScore);
+      if (isNaN(score) || score < 0 || score > 100) return;
+
+      let submitDate = item.createdAt || item.completedAt || item.submittedAt;
+      if (submitDate?.toDate) submitDate = submitDate.toDate();
+      else if (typeof submitDate === 'string' || typeof submitDate === 'number') submitDate = new Date(submitDate);
+      if (!submitDate || isNaN(new Date(submitDate).getTime())) submitDate = new Date();
+      else submitDate = new Date(submitDate);
+
+      const matchedPId = getMatchedProductId(item, products, surveysList, productMappings);
+      const matchedP = products.find(p => p.id === matchedPId);
+
+      list.push({
+        id: item.id || `sus-${list.length}`,
+        measurementId: item.surveyId || 'sus-survey',
+        productId: matchedPId || item.productId || 'unmapped',
+        variantName: item.variantName || (matchedP ? matchedP.name : item.productId || 'Generell'),
+        susScore: score,
+        answers: item.answers || [],
+        comment: item.comment || '',
+        submitDate,
+        startDate: submitDate,
+        otherText: ''
+      });
+    });
+
+    const existingMeasurementIds = new Set(list.map(r => r.measurementId).filter(Boolean));
+
+    allMeasurements.forEach(m => {
+      if (existingMeasurementIds.has(m.id)) return;
+
+      const score = Number(m.averageScore);
+      if (isNaN(score) || score < 0 || score > 100) return;
+
+      const matchedPId = getMatchedProductId({ productId: m.productId, variantName: m.fileName }, products, surveysList, productMappings);
+      const pId = matchedPId || m.productId || 'unmapped';
+
+      let mDate = m.date ? new Date(m.date) : new Date();
+      if (isNaN(mDate.getTime())) mDate = new Date();
+
+      const mDateMonth = format(mDate, 'yyyy-MM');
+      const hasRawForProduct = list.some(r => 
+        (r.productId === pId || isNameMatch(r.productId, pId)) && 
+        format(r.submitDate, 'yyyy-MM') === mDateMonth
+      );
+      if (hasRawForProduct) return;
+
+      const count = m.responseCount && m.responseCount > 0 ? m.responseCount : 1;
+
+      for (let i = 0; i < count; i++) {
+        list.push({
+          id: `virtual-${m.id}-${i}`,
+          measurementId: m.id,
+          productId: pId,
+          variantName: m.fileName || 'Inera-mätning',
+          susScore: score,
+          answers: [],
+          comment: i === 0 ? (m.fileName || 'Systemmätning') : '',
+          submitDate: mDate,
+          startDate: mDate,
+          otherText: ''
+        });
+      }
+    });
+
+    return list;
+  }, [allRawResponsesList, susResponsesList, allMeasurements, products, surveysList, productMappings]);
+
+  // Compute active filtered responses based on all user UI filters
+  const activeResponses = useMemo(() => {
+    let list = allCombinedResponses;
+
+    if (selectedProductId && selectedProductId !== 'Alla') {
+      const targetProd = products.find(p => p.id === selectedProductId);
+      const targetName = targetProd ? targetProd.name : selectedProductId;
+
+      list = list.filter(r => {
+        if (r.productId === selectedProductId) return true;
+        if (targetProd && (isNameMatch(r.productId, targetProd.id) || isNameMatch(r.productId, targetProd.name))) return true;
+        if (targetName && (isNameMatch(r.productId, targetName) || isNameMatch(r.variantName, targetName))) return true;
+        return false;
+      });
+    }
+
+    if (selectedTrainFilter !== 'Alla') {
+      list = list.filter(r => {
+        const p = products.find(prod => prod.id === r.productId || isNameMatch(prod.name, r.productId));
+        return (p?.trainName || 'Ej mappade') === selectedTrainFilter;
+      });
+    }
+
+    if (selectedTeamFilter !== 'Alla') {
+      list = list.filter(r => {
+        const p = products.find(prod => prod.id === r.productId || isNameMatch(prod.name, r.productId));
+        return (p?.teamName || 'Ej mappade') === selectedTeamFilter;
+      });
+    }
+
+    if (selectedMeasurementId && selectedMeasurementId !== 'all') {
+      if (selectedMeasurementId === '30d') {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 30);
+        list = list.filter(r => r.submitDate >= cutoff);
+      } else if (selectedMeasurementId === '90d') {
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - 90);
+        list = list.filter(r => r.submitDate >= cutoff);
+      } else if (selectedMeasurementId === '1y') {
+        const cutoff = new Date();
+        cutoff.setFullYear(cutoff.getFullYear() - 1);
+        list = list.filter(r => r.submitDate >= cutoff);
+      } else if (selectedMeasurementId === 'latest') {
+        if (list.length > 0) {
+          const maxTime = Math.max(...list.map(r => r.submitDate.getTime()));
+          const latestDateStr = format(new Date(maxTime), 'yyyy-MM-dd');
+          list = list.filter(r => format(r.submitDate, 'yyyy-MM-dd') === latestDateStr);
+        }
+      } else if (selectedMeasurementId.startsWith('date-')) {
+        const targetDate = selectedMeasurementId.replace('date-', '');
+        list = list.filter(r => format(r.submitDate, 'yyyy-MM-dd') === targetDate);
+      } else {
+        list = list.filter(r => r.measurementId === selectedMeasurementId || r.productId === selectedMeasurementId);
+      }
+    }
+
+    if (selectedVariant !== 'Alla') {
+      list = list.filter(r => {
+        const mapped = (r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga') ? 'Other' : r.variantName;
+        return mapped === selectedVariant;
+      });
+    }
+
+    list = list.filter(r => r.susScore >= susRange.min && r.susScore <= susRange.max);
+
+    return list;
+  }, [allCombinedResponses, selectedProductId, selectedTrainFilter, selectedTeamFilter, selectedMeasurementId, selectedVariant, susRange, products]);
 
   const liveMetricsByProductId = useMemo(() => {
     const map: Record<string, { 
@@ -683,12 +1201,23 @@ export default function App() {
       activeSurveyRound?: any;
     }> = {};
 
-    // Initialize map for all known products
     products.forEach(p => {
       map[p.id] = { scores: [], isActive: false };
     });
 
-    // Check active survey rounds from susSurveys
+    allCombinedResponses.forEach(r => {
+      const pId = r.productId || 'unmapped-responses';
+      if (!map[pId]) {
+        map[pId] = { scores: [], isActive: false };
+      }
+      map[pId].scores.push(r.susScore);
+      if (r.submitDate) {
+        if (!map[pId].latestDate || r.submitDate > map[pId].latestDate!) {
+          map[pId].latestDate = r.submitDate;
+        }
+      }
+    });
+
     surveysList.forEach(survey => {
       const matchedP = products.find(p => 
         p.id === survey.productId || 
@@ -708,103 +1237,8 @@ export default function App() {
       }
     });
 
-    const pIdSet = new Set(products.map(p => p.id));
-
-    const processItem = (item: any, fromActiveSurvey: boolean = false) => {
-      const score = Number(item.susScore);
-      if (isNaN(score)) return;
-
-      let targetId: string | null = null;
-
-      // 1. Match via surveyId -> survey in surveysList -> product
-      if (item.surveyId) {
-        const foundSurvey = surveysList.find(s => s.id === item.surveyId);
-        if (foundSurvey) {
-          const foundP = products.find(p => 
-            p.id === foundSurvey.productId || 
-            isNameMatch(foundSurvey.productId, p.id) || 
-            isNameMatch(foundSurvey.productId, p.name) || 
-            isNameMatch(foundSurvey.name, p.name)
-          );
-          if (foundP) targetId = foundP.id;
-        }
-      }
-
-      // 2. Match via item.productId or item.variantName
-      if (!targetId) {
-        const rawProdId = (item.productId || '').trim();
-        const rawVariant = (item.variantName || '').trim();
-
-        if (rawProdId && pIdSet.has(rawProdId)) {
-          targetId = rawProdId;
-        } else {
-          const foundP = products.find(p => 
-            (rawProdId && (p.id === rawProdId || isNameMatch(rawProdId, p.id) || isNameMatch(rawProdId, p.name))) ||
-            (rawVariant && (isNameMatch(rawVariant, p.name) || isNameMatch(productMappings[rawVariant], p.name)))
-          );
-          if (foundP) targetId = foundP.id;
-        }
-      }
-
-      if (targetId) {
-        if (!map[targetId]) {
-          map[targetId] = { scores: [], isActive: false };
-        }
-        map[targetId].scores.push(score);
-        if (fromActiveSurvey) map[targetId].isActive = true;
-
-        const rawDt = item.submitDate || item.submittedAt || item.createdAt;
-        if (rawDt) {
-          const dt = new Date(rawDt);
-          if (!isNaN(dt.getTime())) {
-            if (!map[targetId].latestDate || dt > map[targetId].latestDate!) {
-              map[targetId].latestDate = dt;
-            }
-          }
-        }
-      } else {
-        const unmappedId = 'unmapped-responses';
-        if (!map[unmappedId]) {
-          map[unmappedId] = { scores: [], isActive: false };
-        }
-        map[unmappedId].scores.push(score);
-        if (fromActiveSurvey) map[unmappedId].isActive = true;
-        
-        const rawDt = item.submitDate || item.submittedAt || item.createdAt;
-        if (rawDt) {
-          const dt = new Date(rawDt);
-          if (!isNaN(dt.getTime())) {
-            if (!map[unmappedId].latestDate || dt > map[unmappedId].latestDate!) {
-              map[unmappedId].latestDate = dt;
-            }
-          }
-        }
-      }
-    };
-
-    allRawResponsesList.forEach(item => processItem(item, false));
-    susResponsesList.forEach(item => processItem(item, true));
-
-    const processedMeasurementIds = new Set(allRawResponsesList.map(r => r.measurementId).filter(Boolean));
-    allMeasurements.forEach(m => {
-      if (!processedMeasurementIds.has(m.id)) {
-        const score = Number(m.averageScore);
-        if (isNaN(score) || score < 0 || score > 100) return;
-        const count = m.responseCount && m.responseCount > 0 ? m.responseCount : 1;
-        for (let i = 0; i < count; i++) {
-          processItem({ productId: m.productId, variantName: m.fileName, susScore: score, submitDate: m.date }, false);
-        }
-      }
-    });
-
     return map;
-  }, [products, surveysList, allRawResponsesList, susResponsesList, allMeasurements, productMappings]);
-  
-  // Advanced Filters
-  const [selectedTrainFilter, setSelectedTrainFilter] = useState<string>('Alla');
-  const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>('Alla');
-  const [susRange, setSusRange] = useState<{ min: number; max: number }>({ min: 0, max: 100 });
-  const [categoryFilter, setCategoryFilter] = useState<string>('Alla');
+  }, [allCombinedResponses, products, surveysList]);
 
   const allMappedProducts = useMemo(() => {
     const realProductsOnly = products;
@@ -822,75 +1256,48 @@ export default function App() {
         teamName: 'Ej mappade'
       } as Product;
       
-      const liveData = liveMetricsByProductId[p.id];
-      if (liveData) {
-        const hasScores = liveData.scores && liveData.scores.length > 0;
-        const isActive = liveData.isActive || !!liveData.activeSurveyRound;
+      const scopedResponses = (selectedMeasurementId && selectedMeasurementId !== 'all')
+        ? activeResponses.filter(r => r.productId === p.id || isNameMatch(r.productId, p.id) || isNameMatch(r.productId, p.name))
+        : allCombinedResponses.filter(r => r.productId === p.id || isNameMatch(r.productId, p.id) || isNameMatch(r.productId, p.name));
 
-        if (hasScores) {
-          const scores = liveData.scores;
-          const total = scores.length;
-          const sum = scores.reduce((a, b) => a + b, 0);
-          const avg = Math.round((sum / total) * 10) / 10;
-          const med = calculateMedian(scores);
-          return {
-            ...p,
-            latest: {
-              averageScore: avg,
-              medianScore: med,
-              responseCount: total,
-              date: liveData.latestDate || new Date(),
-              isActive
-            }
-          };
-        } else if (isActive) {
-          return {
-            ...p,
-            latest: {
-              averageScore: 0,
-              medianScore: 0,
-              responseCount: 0,
-              date: new Date(),
-              isActive: true
-            }
-          };
-        }
+      if (scopedResponses.length > 0) {
+        const scores = scopedResponses.map(r => r.susScore);
+        const total = scores.length;
+        const sum = scores.reduce((a, b) => a + b, 0);
+        const avg = Math.round((sum / total) * 10) / 10;
+        const med = calculateMedian(scores);
+        const latestDt = new Date(Math.max(...scopedResponses.map(r => r.submitDate.getTime())));
+        return {
+          ...p,
+          latest: {
+            averageScore: avg,
+            medianScore: med,
+            responseCount: total,
+            date: latestDt,
+            isActive: liveMetricsByProductId[p.id]?.isActive || false
+          }
+        };
       }
 
-      if (selectedMeasurementId === 'all') {
-        const productMeasurements = allMeasurements.filter(m => m.productId === p.id);
-        if (productMeasurements.length > 0) {
-          const totalResponses = productMeasurements.reduce((acc, m) => acc + m.responseCount, 0);
-          const avgScore = productMeasurements.reduce((acc, m) => acc + (m.averageScore * m.responseCount), 0) / totalResponses;
-          return { 
-            ...p, 
-            latest: { 
-              averageScore: avgScore, 
-              responseCount: totalResponses,
-              date: productMeasurements[0].date 
-            } 
-          } as any;
-        }
-      } else {
-        const latest = latestMeasurements.find(m => m.productId === p.id);
-        if (latest) return { ...p, latest };
-      }
-
-      if (p.susScore !== undefined && p.susScore > 0) {
+      if (p.susScore !== undefined && p.susScore > 0 && selectedMeasurementId === 'all') {
         return {
           ...p,
           latest: {
             averageScore: p.susScore,
             medianScore: p.susScore,
             responseCount: 0,
-            date: new Date()
+            date: new Date(),
+            isActive: false
           }
         };
       }
 
-      return { ...p, latest: undefined };
+      return {
+        ...p,
+        latest: undefined
+      };
     });
-  }, [products, liveMetricsByProductId, allMeasurements, latestMeasurements, selectedMeasurementId]);
+  }, [products, liveMetricsByProductId, activeResponses, allCombinedResponses, selectedMeasurementId]);
 
   const availableTrains = useMemo(() => {
     const set = new Set<string>();
@@ -1163,146 +1570,6 @@ export default function App() {
     }
   };
 
-  // Helper to match a raw response item to a product ID
-  const getMatchedProductId = (
-    item: any,
-    productsList: Product[],
-    surveys: any[],
-    mappings: Record<string, string>
-  ): string | null => {
-    const pIdSet = new Set(productsList.map(p => p.id));
-
-    // 1. Direct survey reference
-    if (item.surveyId) {
-      const survey = surveys.find(s => s.id === item.surveyId);
-      if (survey) {
-        const foundP = productsList.find(p => 
-          p.id === survey.productId || 
-          isNameMatch(survey.productId, p.id) || 
-          isNameMatch(survey.productId, p.name) || 
-          isNameMatch(survey.name, p.name)
-        );
-        if (foundP) return foundP.id;
-      }
-    }
-
-    // 2. Exact match on item.productId
-    const rawProdId = (item.productId || '').trim();
-    if (rawProdId && pIdSet.has(rawProdId)) {
-      return rawProdId;
-    }
-
-    // 3. Match via rawProdId or variantName or productMappings
-    const rawVariant = (item.variantName || '').trim();
-    const mappedVariant = mappings[rawVariant] || mappings[rawProdId];
-
-    const foundP = productsList.find(p => 
-      (rawProdId && (p.id === rawProdId || isNameMatch(rawProdId, p.id) || isNameMatch(rawProdId, p.name))) ||
-      (rawVariant && (isNameMatch(rawVariant, p.name) || (mappedVariant && isNameMatch(mappedVariant, p.name))))
-    );
-
-    if (foundP) return foundP.id;
-    if (rawProdId) return rawProdId;
-    return null;
-  };
-
-  // Combine ALL raw responses across all sources (CSV uploads + SUS surveys + Measurements collection)
-  const allCombinedResponses = useMemo(() => {
-    const list: ResponseData[] = [];
-
-    allRawResponsesList.forEach(item => {
-      const score = Number(item.susScore);
-      if (isNaN(score) || score < 0 || score > 100) return;
-
-      let submitDate = item.submitDate || item.submittedAt || item.createdAt;
-      if (submitDate?.toDate) submitDate = submitDate.toDate();
-      else if (typeof submitDate === 'string' || typeof submitDate === 'number') submitDate = new Date(submitDate);
-      if (!submitDate || isNaN(new Date(submitDate).getTime())) submitDate = new Date();
-      else submitDate = new Date(submitDate);
-
-      let startDate = item.startDate;
-      if (startDate?.toDate) startDate = startDate.toDate();
-      else if (typeof startDate === 'string' || typeof startDate === 'number') startDate = new Date(startDate);
-      if (!startDate || isNaN(new Date(startDate).getTime())) startDate = submitDate;
-      else startDate = new Date(startDate);
-
-      const matchedPId = getMatchedProductId(item, products, surveysList, productMappings);
-
-      list.push({
-        id: item.id,
-        measurementId: item.measurementId || 'csv-upload',
-        productId: matchedPId || item.productId || 'unmapped',
-        variantName: item.variantName || 'Generell',
-        susScore: score,
-        answers: item.answers || [],
-        comment: item.comment || '',
-        submitDate,
-        startDate,
-        otherText: item.otherText || ''
-      });
-    });
-
-    susResponsesList.forEach(item => {
-      const score = Number(item.susScore);
-      if (isNaN(score) || score < 0 || score > 100) return;
-
-      let submitDate = item.createdAt || item.completedAt || item.submittedAt;
-      if (submitDate?.toDate) submitDate = submitDate.toDate();
-      else if (typeof submitDate === 'string' || typeof submitDate === 'number') submitDate = new Date(submitDate);
-      if (!submitDate || isNaN(new Date(submitDate).getTime())) submitDate = new Date();
-      else submitDate = new Date(submitDate);
-
-      const matchedPId = getMatchedProductId(item, products, surveysList, productMappings);
-      const matchedP = products.find(p => p.id === matchedPId);
-
-      list.push({
-        id: item.id,
-        measurementId: item.surveyId || 'sus-survey',
-        productId: matchedPId || item.productId || 'unmapped',
-        variantName: item.variantName || (matchedP ? matchedP.name : item.productId || 'Generell'),
-        susScore: score,
-        answers: item.answers || [],
-        comment: item.comment || '',
-        submitDate,
-        startDate: submitDate,
-        otherText: ''
-      });
-    });
-
-    // 3. Include measurements from allMeasurements if they don't have individual raw responses
-    const existingMeasurementIds = new Set(list.map(r => r.measurementId));
-    allMeasurements.forEach(m => {
-      if (!existingMeasurementIds.has(m.id)) {
-        const score = Number(m.averageScore);
-        if (isNaN(score) || score < 0 || score > 100) return;
-
-        const count = m.responseCount && m.responseCount > 0 ? m.responseCount : 1;
-        const matchedPId = getMatchedProductId({ productId: m.productId, variantName: m.fileName }, products, surveysList, productMappings);
-        const pId = matchedPId || m.productId || 'unmapped';
-
-        let mDate = m.date ? new Date(m.date) : new Date();
-        if (isNaN(mDate.getTime())) mDate = new Date();
-
-        for (let i = 0; i < count; i++) {
-          list.push({
-            id: `virtual-${m.id}-${i}`,
-            measurementId: m.id,
-            productId: pId,
-            variantName: m.fileName || 'Inera-mätning',
-            susScore: score,
-            answers: [],
-            comment: i === 0 ? (m.fileName || 'Systemmätning') : '',
-            submitDate: mDate,
-            startDate: mDate,
-            otherText: ''
-          });
-        }
-      }
-    });
-
-    return list;
-  }, [allRawResponsesList, susResponsesList, allMeasurements, products, surveysList, productMappings]);
-
   // Compute available measurement rounds/periods for the time period filter
   const availableMeasurementRounds = useMemo(() => {
     const baseResponses = selectedProductId 
@@ -1364,81 +1631,6 @@ export default function App() {
     return Array.from(roundsMap.values()).sort((a, b) => b.date.getTime() - a.date.getTime());
   }, [allCombinedResponses, selectedProductId, products, surveysList, allMeasurements]);
 
-  // Compute active filtered responses based on all user UI filters
-  const activeResponses = useMemo(() => {
-    let list = allCombinedResponses;
-
-    // 1. Filter by Product
-    if (selectedProductId && selectedProductId !== 'Alla') {
-      const targetProd = products.find(p => p.id === selectedProductId);
-      const targetName = targetProd ? targetProd.name : selectedProductId;
-
-      list = list.filter(r => {
-        if (r.productId === selectedProductId) return true;
-        if (targetProd && (isNameMatch(r.productId, targetProd.id) || isNameMatch(r.productId, targetProd.name))) return true;
-        if (targetName && (isNameMatch(r.productId, targetName) || isNameMatch(r.variantName, targetName))) return true;
-        return false;
-      });
-    }
-
-    // 2. Filter by Train
-    if (selectedTrainFilter !== 'Alla') {
-      list = list.filter(r => {
-        const p = products.find(prod => prod.id === r.productId || isNameMatch(prod.name, r.productId));
-        return (p?.trainName || 'Ej mappade') === selectedTrainFilter;
-      });
-    }
-
-    // 3. Filter by Team
-    if (selectedTeamFilter !== 'Alla') {
-      list = list.filter(r => {
-        const p = products.find(prod => prod.id === r.productId || isNameMatch(prod.name, r.productId));
-        return (p?.teamName || 'Ej mappade') === selectedTeamFilter;
-      });
-    }
-
-    // 4. Filter by Time Period / Measurement
-    if (selectedMeasurementId && selectedMeasurementId !== 'all') {
-      if (selectedMeasurementId === '30d') {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - 30);
-        list = list.filter(r => r.submitDate >= cutoff);
-      } else if (selectedMeasurementId === '90d') {
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - 90);
-        list = list.filter(r => r.submitDate >= cutoff);
-      } else if (selectedMeasurementId === '1y') {
-        const cutoff = new Date();
-        cutoff.setFullYear(cutoff.getFullYear() - 1);
-        list = list.filter(r => r.submitDate >= cutoff);
-      } else if (selectedMeasurementId === 'latest') {
-        if (list.length > 0) {
-          const maxTime = Math.max(...list.map(r => r.submitDate.getTime()));
-          const latestDateStr = format(new Date(maxTime), 'yyyy-MM-dd');
-          list = list.filter(r => format(r.submitDate, 'yyyy-MM-dd') === latestDateStr);
-        }
-      } else if (selectedMeasurementId.startsWith('date-')) {
-        const targetDate = selectedMeasurementId.replace('date-', '');
-        list = list.filter(r => format(r.submitDate, 'yyyy-MM-dd') === targetDate);
-      } else {
-        list = list.filter(r => r.measurementId === selectedMeasurementId || r.productId === selectedMeasurementId);
-      }
-    }
-
-    // 5. Filter by Variant
-    if (selectedVariant !== 'Alla') {
-      list = list.filter(r => {
-        const mapped = (r.variantName === 'Generell' || r.variantName === 'Other' || r.variantName === 'Övriga') ? 'Other' : r.variantName;
-        return mapped === selectedVariant;
-      });
-    }
-
-    // 6. Filter by SUS Range
-    list = list.filter(r => r.susScore >= susRange.min && r.susScore <= susRange.max);
-
-    return list;
-  }, [allCombinedResponses, selectedProductId, selectedTrainFilter, selectedTeamFilter, selectedMeasurementId, selectedVariant, susRange, products]);
-
   const filteredResponses = activeResponses;
 
   const averageSus = useMemo(() => {
@@ -1492,6 +1684,11 @@ export default function App() {
 
   const filteredProducts = useMemo(() => {
     let result = [...allMappedProducts];
+
+    // Filter out products with 0 responses when a specific measurement round is selected
+    if (selectedMeasurementId && selectedMeasurementId !== 'all') {
+      result = result.filter(p => p.latest && p.latest.responseCount > 0);
+    }
 
     // Train filter
     if (selectedTrainFilter !== 'Alla') {
@@ -1617,10 +1814,9 @@ export default function App() {
     let totalResponses = 0;
 
     prods.forEach(p => {
-      if (p.latest) {
-        const resp = p.latest.responseCount || 1;
-        totalScoreSum += p.latest.averageScore * resp;
-        totalResponses += (p.latest.responseCount || 0);
+      if (p.latest && p.latest.responseCount > 0) {
+        totalScoreSum += p.latest.averageScore * p.latest.responseCount;
+        totalResponses += p.latest.responseCount;
       }
     });
 
@@ -1643,8 +1839,9 @@ export default function App() {
 
   const userNames = useMemo(() => {
     if (!user) return { firstName: 'Användare', lastName: '' };
-    if (user.displayName) {
-      const parts = user.displayName.trim().split(' ');
+    const nameToUse = currentUserDoc?.displayName || user.displayName;
+    if (nameToUse) {
+      const parts = nameToUse.trim().split(' ');
       return {
         firstName: parts[0],
         lastName: parts.slice(1).join(' ')
@@ -1660,7 +1857,7 @@ export default function App() {
       };
     }
     return { firstName: 'Användare', lastName: '' };
-  }, [user]);
+  }, [user, currentUserDoc]);
 
   if (loading) {
     return (
@@ -1676,6 +1873,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-white pb-12">
+      {currentUserDoc?.mustChangePassword && (
+        <ForcePasswordChangeModal 
+          user={user} 
+          onPasswordChanged={() => setCurrentUserDoc((prev: any) => prev ? { ...prev, mustChangePassword: false } : null)} 
+        />
+      )}
       {/* Header */}
       <header className="bg-white border-b border-inera-secondary-90 px-4 sm:px-6 sticky top-0 z-40 shadow-2xs">
         <div className="max-w-[80rem] mx-auto flex items-center justify-between gap-4 py-2.5">
@@ -1957,38 +2160,38 @@ export default function App() {
                     {isAdminExpanded && (
                       <div className="pl-9 pr-2 space-y-1 py-1">
                         <button 
-                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
-                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                          onClick={() => { setActiveTab('admin'); setAdminSubTab('users'); setIsMobileMenuOpen(false); }}
+                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'users' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
                         >
                           Användare
                         </button>
                         <button 
-                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
-                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                          onClick={() => { setActiveTab('admin'); setAdminSubTab('upload'); setIsMobileMenuOpen(false); }}
+                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'upload' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
                         >
                           Ladda upp data
                         </button>
                         <button 
-                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
-                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                          onClick={() => { setActiveTab('admin'); setAdminSubTab('api'); setIsMobileMenuOpen(false); }}
+                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'api' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
                         >
                           API-inställningar
                         </button>
                         <button 
-                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
-                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                          onClick={() => { setActiveTab('admin'); setAdminSubTab('rawdata'); setIsMobileMenuOpen(false); }}
+                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'rawdata' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
                         >
                           Rådata Export
                         </button>
                         <button 
-                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
-                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                          onClick={() => { setActiveTab('admin'); setAdminSubTab('catalog'); setIsMobileMenuOpen(false); }}
+                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'catalog' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
                         >
                           Produktkatalog & Mappning
                         </button>
                         <button 
-                          onClick={() => { setActiveTab('admin'); setIsMobileMenuOpen(false); }}
-                          className="w-full text-left px-3 py-2 text-xs font-bold text-neutral-700 hover:text-[#a63363] hover:bg-pink-50 rounded-lg transition-colors"
+                          onClick={() => { setActiveTab('admin'); setAdminSubTab('grundstruktur'); setIsMobileMenuOpen(false); }}
+                          className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'grundstruktur' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
                         >
                           Inläsning Inera Grundstruktur
                         </button>
@@ -2002,7 +2205,7 @@ export default function App() {
               <div className="p-4 border-t border-neutral-200 bg-neutral-50 flex items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center gap-2 text-xs font-bold text-neutral-700 truncate">
                   <LucideUser size={16} className="text-[#a63363] shrink-0" />
-                  <span className="truncate">{user?.email}</span>
+                  <span className="truncate">{userNames.firstName} {userNames.lastName}</span>
                 </div>
                 <button
                   onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}
@@ -2748,7 +2951,64 @@ export default function App() {
                 exit={{ opacity: 0, y: -15 }}
                 transition={{ duration: 0.2, ease: "easeOut" }}
               >
+                <div className="flex flex-wrap items-center justify-between border-b border-inera-secondary-90 gap-4 pb-2 mb-6 hidden md:flex">
+                  <div className="flex gap-6 overflow-x-auto">
+                    <button 
+                      type="button"
+                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'users' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+                      onClick={() => setAdminSubTab('users')}
+                    >
+                      Användare
+                    </button>
+                    <button 
+                      type="button"
+                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'upload' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+                      onClick={() => setAdminSubTab('upload')}
+                    >
+                      Ladda upp data
+                    </button>
+                    <button 
+                      type="button"
+                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'api' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+                      onClick={() => setAdminSubTab('api')}
+                    >
+                      API-inställningar
+                    </button>
+                    <button 
+                      type="button"
+                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'rawdata' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+                      onClick={() => setAdminSubTab('rawdata')}
+                    >
+                      Rådata Export
+                    </button>
+                    <button 
+                      type="button"
+                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'catalog' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+                      onClick={() => setAdminSubTab('catalog')}
+                    >
+                      Produktkatalog & Mappning
+                    </button>
+                    <button 
+                      type="button"
+                      className={cn("text-sm font-bold pb-2 border-b-2 transition-colors whitespace-nowrap cursor-pointer", adminSubTab === 'grundstruktur' ? "border-[#a63363] text-[#a63363]" : "border-transparent text-inera-neutral-40 hover:text-inera-neutral-20")}
+                      onClick={() => setAdminSubTab('grundstruktur')}
+                    >
+                      Inläsning Inera Grundstruktur
+                    </button>
+                  </div>
+                  {user?.email === 'andreas.l.melin@gmail.com' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowResetConfirm(true)}
+                      className="btn btn--xs btn--destructive shrink-0 flex items-center gap-1.5"
+                    >
+                      <Trash2 size={14} />
+                      Nollställ Katalog
+                    </button>
+                  )}
+                </div>
                 <AdminView 
+                  activeAdminTab={adminSubTab}
                   onResetCatalog={user?.email === 'andreas.l.melin@gmail.com' ? () => setShowResetConfirm(true) : undefined} 
                   uploadNode={(
                     <div className="card p-8 shadow-sm border-inera-secondary-90 bg-white">
