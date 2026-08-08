@@ -129,26 +129,65 @@ export async function pushMetricsToAdminDashboard(payload: {
     const savedToken = typeof window !== 'undefined' ? window.localStorage.getItem('inera_sus_sync_token') : null;
     const tokenToUse = savedToken || 'inera_ux_token_11am0nao';
 
-    const response = await fetch("/api/sync-metrics", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Token": tokenToUse,
-        "X-Sync-Endpoint": endpointToUse
-      },
-      body: JSON.stringify(body),
-    });
-
-    const responseText = await response.text();
     let responseData: any = {};
+    let isSuccess = false;
+    let proxyFailed = false;
+
     try {
-      responseData = JSON.parse(responseText);
-    } catch {
-      responseData = { message: responseText };
+      const response = await fetch("/api/sync-metrics", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Token": tokenToUse,
+          "X-Sync-Endpoint": endpointToUse
+        },
+        body: JSON.stringify(body),
+      });
+
+      const responseText = await response.text();
+      try {
+        responseData = JSON.parse(responseText);
+        isSuccess = response.ok && responseData.success !== false;
+      } catch (e) {
+        // Not JSON, likely Vercel 404 fallback page
+        proxyFailed = true;
+      }
+    } catch (e) {
+      proxyFailed = true;
     }
 
-    if (!response.ok || responseData.success === false) {
-      const errMsg = responseData.error || responseData.message || `HTTP ${response.status} ${response.statusText}`;
+    if (proxyFailed) {
+      console.warn("Proxy-anropet till /api/sync-metrics misslyckades (troligen pga statisk miljö som Vercel). Försöker anropa endpoint direkt...");
+      try {
+        const directResponse = await fetch(endpointToUse, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Token": tokenToUse,
+            "x-api-token": tokenToUse
+          },
+          body: JSON.stringify(body)
+        });
+        
+        const directText = await directResponse.text();
+        try {
+          responseData = JSON.parse(directText);
+          isSuccess = directResponse.ok && responseData.success !== false;
+        } catch (e) {
+          responseData = { error: 'Kunde inte läsa svar från mottagande server (ej giltig JSON). Kontrollera endpoint URL.' };
+          isSuccess = false;
+        }
+      } catch (directErr: any) {
+        return { 
+          success: false, 
+          error: "Misslyckades att synka. Appen körs på en statisk host (t.ex. Vercel) som saknar backend API:er, och det direkta anropet blockerades (troligen pga CORS).",
+          details: { message: directErr.message }
+        };
+      }
+    }
+
+    if (!isSuccess) {
+      const errMsg = responseData.error || responseData.message || "Misslyckades att synka.";
       console.warn("Kunde inte synka till Inera UX Dashboard:", errMsg);
       return { success: false, error: errMsg, details: responseData };
     }

@@ -74,29 +74,63 @@ const ApiView = () => {
     setResponse('');
     try {
       const parsed = JSON.parse(jsonPayload);
-      const res = await fetch('/api/sync-metrics', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Token': apiToken,
-          'X-Sync-Endpoint': endpoint
-        },
-        body: JSON.stringify(parsed)
-      });
-      const responseText = await res.text();
+      
       let data: any = {};
+      let isSuccess = false;
+      let proxyFailed = false;
+      
       try {
-        data = JSON.parse(responseText);
-      } catch {
-        data = { message: responseText };
+        const res = await fetch('/api/sync-metrics', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Token': apiToken,
+            'X-Sync-Endpoint': endpoint
+          },
+          body: JSON.stringify(parsed)
+        });
+        const responseText = await res.text();
+        try {
+          data = JSON.parse(responseText);
+          isSuccess = res.ok && data.success !== false;
+        } catch {
+          proxyFailed = true;
+        }
+      } catch (e) {
+        proxyFailed = true;
+      }
+
+      if (proxyFailed) {
+        try {
+          const directRes = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Token': apiToken,
+              'x-api-token': apiToken
+            },
+            body: JSON.stringify(parsed)
+          });
+          const directText = await directRes.text();
+          try {
+            data = JSON.parse(directText);
+            isSuccess = directRes.ok && data.success !== false;
+          } catch {
+            data = { error: 'Kunde inte läsa svar från mottagande server (ej giltig JSON).' };
+            isSuccess = false;
+          }
+        } catch (directErr: any) {
+          data = { error: 'Misslyckades att synka. Appen körs på en statisk host, och det direkta anropet blockerades (troligen pga CORS).' };
+          isSuccess = false;
+        }
       }
 
       setResponse(JSON.stringify(data, null, 2));
 
-      if (res.ok && data.success !== false) {
+      if (isSuccess) {
         setSyncStatus({ success: true, message: 'Data synkad med Inera UX Dashboard' });
       } else {
-        const errMsg = data.error || data.message || `HTTP ${res.status} ${res.statusText}`;
+        const errMsg = data.error || data.message || `Fel vid synkronisering`;
         console.error("API test error:", data);
         setSyncStatus({ success: false, message: `Synkronisering misslyckades: ${errMsg}` });
       }
