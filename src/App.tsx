@@ -255,6 +255,8 @@ const AdminView = ({
   const [adminNewPassword, setAdminNewPassword] = useState('');
   const [forceChangeOnLogin, setForceChangeOnLogin] = useState(true);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [pwdError, setPwdError] = useState('');
+  const [pwdSuccess, setPwdSuccess] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -320,33 +322,50 @@ const AdminView = ({
   const handleSavePasswordChange = async () => {
     if (!userToChangePassword) return;
     setIsSavingPassword(true);
-    setError('');
+    setPwdError('');
+    setPwdSuccess('');
     try {
       if (adminNewPassword) {
         if (adminNewPassword.length < 6) {
-          setError('Lösenordet måste vara minst 6 tecken.');
+          setPwdError('Lösenordet måste vara minst 6 tecken.');
           setIsSavingPassword(false);
           return;
         }
 
         // Call our API endpoint to securely set the password of the user
         const token = await auth.currentUser?.getIdToken();
-        const response = await fetch('/api/admin/change-password', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            uid: userToChangePassword.id,
-            newPassword: adminNewPassword,
-            forceChangeOnLogin: forceChangeOnLogin
-          })
-        });
+        let response;
+        try {
+          response = await fetch('/api/admin/change-password', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              uid: userToChangePassword.id,
+              newPassword: adminNewPassword,
+              forceChangeOnLogin: forceChangeOnLogin
+            })
+          });
+        } catch (fetchErr: any) {
+          throw new Error('Kunde inte nå backend-servern. Om du kör appen på en statisk host som Vercel, använd istället "Skicka länk för lösenordsåterställning" eftersom lösenord för andra användare kräver vår säkra backend.');
+        }
 
-        if (!response.ok) {
-          const resData = await response.json();
-          throw new Error(resData.error || 'Misslyckades att ändra lösenordet via backend API.');
+        let resData: any = {};
+        if (response) {
+          const responseText = await response.text();
+          try {
+            resData = JSON.parse(responseText);
+          } catch (jsonErr) {
+            throw new Error('Kunde inte läsa svar från servern. Om du kör appen på en statisk host (t.ex. Vercel) saknas stöd för backend API:er. Använd istället "Skicka länk för lösenordsåterställning" nedan.');
+          }
+
+          if (!response.ok) {
+            throw new Error(resData.error || 'Misslyckades att ändra lösenordet via backend API.');
+          }
+        } else {
+          throw new Error('Inget svar från servern.');
         }
       } else {
         await updateDoc(doc(db, 'users', userToChangePassword.id), {
@@ -355,25 +374,24 @@ const AdminView = ({
         });
       }
 
-      setSuccessMsg(`Lösenordsinställning sparades för ${userToChangePassword.displayName || userToChangePassword.email}. Användaren ombes byta lösenord vid nästa inloggning.`);
-      setTimeout(() => setSuccessMsg(''), 5000);
-      setUserToChangePassword(null);
+      setPwdSuccess(`Lösenordet och inställningarna har sparats för ${userToChangePassword.displayName || userToChangePassword.email}!`);
       setAdminNewPassword('');
       await fetchUsers();
     } catch (err: any) {
-      setError(err.message || 'Kunde inte uppdatera lösenordet');
+      setPwdError(err.message || 'Kunde inte uppdatera lösenordet');
     } finally {
       setIsSavingPassword(false);
     }
   };
 
   const handleSendResetEmail = async (email: string) => {
+    setPwdError('');
+    setPwdSuccess('');
     try {
       await sendPasswordResetEmail(auth, email);
-      setSuccessMsg(`Återställningslänk skickad till ${email}`);
-      setTimeout(() => setSuccessMsg(''), 4000);
+      setPwdSuccess(`En länk för lösenordsåterställning har skickats till ${email}!`);
     } catch (err: any) {
-      setError(err.message || 'Kunde inte skicka återställningslänk');
+      setPwdError(err.message || 'Kunde inte skicka återställningslänk');
     }
   };
 
@@ -546,6 +564,22 @@ const AdminView = ({
                     Sätt nytt lösenord eller aktivera krav på lösenordsbyte för <strong>{userToChangePassword.displayName || userToChangePassword.email}</strong>.
                   </p>
 
+                  {pwdError && (
+                    <div className="text-inera-error-40 text-xs bg-inera-error-95 border border-inera-error-40/30 p-3 rounded-lg font-medium leading-relaxed">
+                      {pwdError}
+                    </div>
+                  )}
+
+                  {pwdSuccess && (
+                    <div className="text-inera-success-40 text-xs bg-inera-success-95 border border-inera-success-40/30 p-3 rounded-lg font-medium flex items-start gap-2">
+                      <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-inera-success-40" />
+                      <div className="space-y-1">
+                        <p>{pwdSuccess}</p>
+                        <p className="text-[10px] text-inera-success-40/80">Denna ruta kan nu stängas.</p>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-3 pt-1">
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-inera-neutral-30">Nytt lösenord (valfritt / tillfälligt)</label>
@@ -555,6 +589,7 @@ const AdminView = ({
                         onChange={(e) => setAdminNewPassword(e.target.value)}
                         placeholder="Ange ett nytt lösenord..."
                         className="input w-full text-sm"
+                        disabled={!!pwdSuccess}
                       />
                     </div>
 
@@ -564,6 +599,7 @@ const AdminView = ({
                         checked={forceChangeOnLogin}
                         onChange={(e) => setForceChangeOnLogin(e.target.checked)}
                         className="rounded border-neutral-300 text-inera-primary-40 focus:ring-inera-primary-40"
+                        disabled={!!pwdSuccess}
                       />
                       <span>Tvinga användaren att byta lösenord vid nästa inloggning</span>
                     </label>
@@ -572,7 +608,8 @@ const AdminView = ({
                       <button
                         type="button"
                         onClick={() => handleSendResetEmail(userToChangePassword.email)}
-                        className="text-xs font-bold text-inera-primary-40 hover:underline flex items-center gap-1"
+                        className="text-xs font-bold text-inera-primary-40 hover:underline flex items-center gap-1 disabled:opacity-50"
+                        disabled={!!pwdSuccess}
                       >
                         <RefreshCw size={12} />
                         Skicka länk för lösenordsåterställning per e-post
@@ -581,21 +618,49 @@ const AdminView = ({
                   </div>
 
                   <div className="flex justify-end gap-3 pt-3 border-t border-inera-secondary-90">
-                    <button 
-                      onClick={() => setUserToChangePassword(null)}
-                      disabled={isSavingPassword}
-                      className="btn btn--m btn--secondary"
-                    >
-                      Avbryt
-                    </button>
-                    <button 
-                      onClick={handleSavePasswordChange}
-                      disabled={isSavingPassword}
-                      className="btn btn--m btn--primary flex items-center gap-2"
-                    >
-                      {isSavingPassword ? <Loader2 size={16} className="animate-spin" /> : <Lock size={16} />}
-                      Spara inställningar
-                    </button>
+                    {pwdSuccess ? (
+                      <button 
+                        onClick={() => {
+                          setUserToChangePassword(null);
+                          setPwdSuccess('');
+                          setPwdError('');
+                        }}
+                        className="btn btn--m btn--primary w-full sm:w-auto"
+                      >
+                        Stäng
+                      </button>
+                    ) : (
+                      <>
+                        <button 
+                          onClick={() => {
+                            setUserToChangePassword(null);
+                            setPwdSuccess('');
+                            setPwdError('');
+                          }}
+                          disabled={isSavingPassword}
+                          className="btn btn--m btn--secondary"
+                        >
+                          Avbryt
+                        </button>
+                        <button 
+                          onClick={handleSavePasswordChange}
+                          disabled={isSavingPassword}
+                          className="btn btn--m btn--primary flex items-center gap-2"
+                        >
+                          {isSavingPassword ? (
+                            <>
+                              <Loader2 size={16} className="animate-spin" />
+                              Sparar...
+                            </>
+                          ) : (
+                            <>
+                              <Lock size={16} />
+                              Spara inställningar
+                            </>
+                          )}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1303,6 +1368,8 @@ export default function App() {
         };
       }
 
+      const isActive = liveMetricsByProductId[p.id]?.isActive || false;
+
       if (p.susScore !== undefined && p.susScore > 0 && selectedMeasurementId === 'all') {
         return {
           ...p,
@@ -1311,7 +1378,20 @@ export default function App() {
             medianScore: p.susScore,
             responseCount: 0,
             date: new Date(),
-            isActive: false
+            isActive: isActive
+          }
+        };
+      }
+
+      if (isActive) {
+        return {
+          ...p,
+          latest: {
+            averageScore: 0,
+            medianScore: 0,
+            responseCount: 0,
+            date: new Date(),
+            isActive: true
           }
         };
       }
