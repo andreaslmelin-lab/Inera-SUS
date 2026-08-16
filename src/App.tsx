@@ -1036,22 +1036,32 @@ export default function App() {
     if (normA === normB) return true;
     if (normA.replace(/\s+/g, '') === normB.replace(/\s+/g, '')) return true;
 
-    if (normA.length >= 3 && normB.length >= 3) {
-      if (normA.includes(normB) || normB.includes(normA)) return true;
+    // Differentiating qualifiers that MUST match if present
+    const qualifiers = ['app', 'se', 'webb', 'mobil', 'direkt', 'journalen', 'intyg', 'admin', 'personal', 'invanare'];
+    const aTokens = normA.split(' ');
+    const bTokens = normB.split(' ');
+
+    const aQualifiers = qualifiers.filter(q => aTokens.includes(q));
+    const bQualifiers = qualifiers.filter(q => bTokens.includes(q));
+
+    // If one has 'app' and the other has 'se', they are strictly different products
+    if (aQualifiers.length > 0 && bQualifiers.length > 0) {
+      const hasOverlap = aQualifiers.some(q => bQualifiers.includes(q));
+      if (!hasOverlap) return false;
+    } else if (aQualifiers.length !== bQualifiers.length) {
+      // One has a qualifier (e.g. 'app') and the other doesn't (e.g. '1177') - do not conflate them
+      return false;
     }
 
-    const stopWords = ['och', 'med', 'for', 'ett', 'ska', 'som', 'tjanst', 'tjansterna', 'tjansten'];
-    const tokensA = normA.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
-    const tokensB = normB.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
+    const stopWords = ['och', 'med', 'for', 'ett', 'ska', 'som', 'tjanst', 'tjansterna', 'tjansten', 'inera'];
+    const tokensA = aTokens.filter(t => t.length >= 2 && !stopWords.includes(t));
+    const tokensB = bTokens.filter(t => t.length >= 2 && !stopWords.includes(t));
 
     if (tokensA.length > 0 && tokensB.length > 0) {
-      const common = tokensA.filter(t => tokensB.some(tb => {
-        if (tb.includes(t) || t.includes(tb)) return true;
-        if (t.length >= 5 && tb.length >= 5 && (t.slice(0, 5) === tb.slice(0, 5) || t.startsWith(tb.slice(0, 5)))) return true;
-        return false;
-      }));
-      const minTokens = Math.min(tokensA.length, tokensB.length);
-      if (common.length >= minTokens) return true;
+      if (tokensA.length === tokensB.length) {
+        const allMatch = tokensA.every((t, i) => t === tokensB[i] || (t.length >= 5 && tokensB[i].length >= 5 && t.startsWith(tokensB[i].slice(0, 5))));
+        if (allMatch) return true;
+      }
     }
 
     return false;
@@ -1174,6 +1184,7 @@ export default function App() {
     });
 
     const existingMeasurementIds = new Set(list.map(r => r.measurementId).filter(Boolean));
+    const productsWithRawResponses = new Set(list.map(r => r.productId).filter(Boolean));
 
     allMeasurements.forEach(m => {
       if (existingMeasurementIds.has(m.id)) return;
@@ -1184,15 +1195,11 @@ export default function App() {
       const matchedPId = getMatchedProductId({ productId: m.productId, variantName: m.fileName }, products, surveysList, productMappings);
       const pId = matchedPId || m.productId || 'unmapped';
 
+      // If we already have actual raw responses for this product, do not inject synthetic virtual duplicates
+      if (pId !== 'unmapped' && productsWithRawResponses.has(pId)) return;
+
       let mDate = m.date ? new Date(m.date) : new Date();
       if (isNaN(mDate.getTime())) mDate = new Date();
-
-      const mDateMonth = format(mDate, 'yyyy-MM');
-      const hasRawForProduct = list.some(r => 
-        (r.productId === pId || isNameMatch(r.productId, pId)) && 
-        format(r.submitDate, 'yyyy-MM') === mDateMonth
-      );
-      if (hasRawForProduct) return;
 
       const count = m.responseCount && m.responseCount > 0 ? m.responseCount : 1;
 
@@ -1348,8 +1355,8 @@ export default function App() {
       } as Product;
       
       const scopedResponses = (selectedMeasurementId && selectedMeasurementId !== 'all')
-        ? activeResponses.filter(r => r.productId === p.id || isNameMatch(r.productId, p.id) || isNameMatch(r.productId, p.name))
-        : allCombinedResponses.filter(r => r.productId === p.id || isNameMatch(r.productId, p.id) || isNameMatch(r.productId, p.name));
+        ? activeResponses.filter(r => r.productId === p.id || (r.productId === 'unmapped' && (isNameMatch(r.variantName, p.name) || isNameMatch(r.variantName, p.id))))
+        : allCombinedResponses.filter(r => r.productId === p.id || (r.productId === 'unmapped' && (isNameMatch(r.variantName, p.name) || isNameMatch(r.variantName, p.id))));
 
       if (scopedResponses.length > 0) {
         const scores = scopedResponses.map(r => r.susScore);
@@ -1925,23 +1932,17 @@ export default function App() {
     const prods = filteredProducts;
     if (prods.length === 0) return { avg: 0, totalResponses: 0, totalProducts: 0 };
 
-    let totalScoreSum = 0;
-    let totalResponses = 0;
-
-    prods.forEach(p => {
-      if (p.latest && p.latest.responseCount > 0) {
-        totalScoreSum += p.latest.averageScore * p.latest.responseCount;
-        totalResponses += p.latest.responseCount;
-      }
-    });
-
+    // Total responses directly from active filtered unique responses
+    const totalResponses = activeResponses.length;
+    const totalScoreSum = activeResponses.reduce((sum, r) => sum + r.susScore, 0);
     const avg = totalResponses > 0 ? Math.round((totalScoreSum / totalResponses) * 10) / 10 : 0;
+
     return {
       avg,
       totalResponses,
       totalProducts: prods.length
     };
-  }, [filteredProducts]);
+  }, [filteredProducts, activeResponses]);
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
@@ -2960,9 +2961,11 @@ export default function App() {
                                               {prodName}
                                             </span>
                                           )}
-                                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-inera-secondary-90 text-inera-neutral-30 border border-inera-secondary-80">
-                                            {r.variantName === 'Other' && r.otherText ? `Other: ${r.otherText}` : r.variantName}
-                                          </span>
+                                          {r.variantName && r.variantName !== 'Generell' && r.variantName.toLowerCase().trim() !== (prodName || '').toLowerCase().trim() && (
+                                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-inera-secondary-90 text-inera-neutral-30 border border-inera-secondary-80">
+                                              {r.variantName === 'Other' && r.otherText ? `Other: ${r.otherText}` : r.variantName}
+                                            </span>
+                                          )}
                                         </div>
                                         <span className="text-[10px] text-inera-neutral-40 font-bold">{format(r.submitDate, 'yyyy-MM-dd HH:mm')}</span>
                                       </div>

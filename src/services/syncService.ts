@@ -29,18 +29,30 @@ function isNameMatch(a: string, b: string): boolean {
   if (normA === normB) return true;
   if (normA.replace(/\s+/g, '') === normB.replace(/\s+/g, '')) return true;
 
-  if (normA.length >= 3 && normB.length >= 3) {
-    if (normA.includes(normB) || normB.includes(normA)) return true;
+  // Differentiating qualifiers that MUST match if present
+  const qualifiers = ['app', 'se', 'webb', 'mobil', 'direkt', 'journalen', 'intyg', 'admin', 'personal', 'invanare'];
+  const aTokens = normA.split(' ');
+  const bTokens = normB.split(' ');
+
+  const aQualifiers = qualifiers.filter(q => aTokens.includes(q));
+  const bQualifiers = qualifiers.filter(q => bTokens.includes(q));
+
+  if (aQualifiers.length > 0 && bQualifiers.length > 0) {
+    const hasOverlap = aQualifiers.some(q => bQualifiers.includes(q));
+    if (!hasOverlap) return false;
+  } else if (aQualifiers.length !== bQualifiers.length) {
+    return false;
   }
 
-  const stopWords = ['och', 'med', 'for', 'ett', 'ska', 'som', 'tjanst', 'tjansterna', 'tjansten'];
-  const tokensA = normA.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
-  const tokensB = normB.split(' ').filter(t => t.length >= 3 && !stopWords.includes(t));
+  const stopWords = ['och', 'med', 'for', 'ett', 'ska', 'som', 'tjanst', 'tjansterna', 'tjansten', 'inera'];
+  const tokensA = aTokens.filter(t => t.length >= 2 && !stopWords.includes(t));
+  const tokensB = bTokens.filter(t => t.length >= 2 && !stopWords.includes(t));
 
   if (tokensA.length > 0 && tokensB.length > 0) {
-    const common = tokensA.filter(t => tokensB.some(tb => tb.includes(t) || t.includes(tb)));
-    const minTokens = Math.min(tokensA.length, tokensB.length);
-    if (common.length >= minTokens) return true;
+    if (tokensA.length === tokensB.length) {
+      const allMatch = tokensA.every((t, i) => t === tokensB[i] || (t.length >= 5 && tokensB[i].length >= 5 && t.startsWith(tokensB[i].slice(0, 5))));
+      if (allMatch) return true;
+    }
   }
 
   return false;
