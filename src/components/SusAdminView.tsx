@@ -10,6 +10,8 @@ import {
 import { getSusGrade, calculateMedian } from '../lib/utils';
 import { loadMasterCatalog } from '../services/catalogMappingService';
 import { triggerSusMetricsSync } from '../services/syncService';
+import { CommentsSummaryCard } from './CommentsSummaryCard';
+import { synthesizeComments } from '../utils/commentSummarizer';
 
 const getBaseUrl = () => {
   if (typeof window !== 'undefined') {
@@ -829,6 +831,13 @@ export default function SusAdminView() {
             <h3 className="font-bold text-inera-neutral-10 text-lg mb-4 flex items-center gap-2">
               <MessageSquare size={18} className="text-inera-primary-40" /> Inkomna fritextkommentarer ({commentsList.length})
             </h3>
+            
+            {/* 3-5 mest vanliga synpunkter */}
+            <CommentsSummaryCard 
+              synthesis={synthesizeComments(commentsList)} 
+              productName={surveyProduct?.name} 
+            />
+
             <div className="space-y-3 max-h-80 overflow-y-auto">
               {commentsList.map((res, i) => (
                 <div key={i} className="p-4 bg-inera-secondary-95 rounded-xl border border-inera-secondary-90 text-sm text-inera-neutral-10">

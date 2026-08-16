@@ -27,6 +27,8 @@ import CatalogMappingView from './components/CatalogMappingView';
 import GrundstrukturView from './components/GrundstrukturView';
 import SusAdminView from './components/SusAdminView';
 import PublicSurveyView from './components/PublicSurveyView';
+import { CommentsSummaryCard } from './components/CommentsSummaryCard';
+import { synthesizeComments } from './utils/commentSummarizer';
 import ineraLogo from './Images/Inera logo 1.0 färg.svg';
 
 const ADMIN_EMAILS = ['andreas.melin@inera.se', 'andreas.melin@inera', 'andreas.l.melin@gmail.com'];
@@ -1737,6 +1739,15 @@ export default function App() {
 
   const filteredResponses = activeResponses;
 
+  const commentsSynthesis = useMemo(() => {
+    return synthesizeComments(filteredResponses);
+  }, [filteredResponses]);
+
+  const selectedProductObj = useMemo(() => {
+    if (!selectedProductId || selectedProductId === 'Alla') return undefined;
+    return products.find(p => p.id === selectedProductId);
+  }, [selectedProductId, products]);
+
   const averageSus = useMemo(() => {
     if (filteredResponses.length === 0) return 0;
     return filteredResponses.reduce((acc, r) => acc + r.susScore, 0) / filteredResponses.length;
@@ -2865,9 +2876,16 @@ export default function App() {
                         })()}
                       </div>
                     </div>
-                    <div className="max-h-[600px] overflow-y-auto p-6 space-y-8">
-                      {(() => {
-                        let commentsWithText = filteredResponses.filter(r => r.comment);
+                    <div className="p-6 space-y-6">
+                      {/* Sammanställda synpunkter: 3-5 vanligaste positiva och negativa */}
+                      <CommentsSummaryCard 
+                        synthesis={commentsSynthesis} 
+                        productName={selectedProductObj?.name}
+                      />
+
+                      <div className="max-h-[600px] overflow-y-auto space-y-8 pr-1">
+                        {(() => {
+                          let commentsWithText = filteredResponses.filter(r => r.comment);
                         if (commentCategoryFilter === 'excellent') {
                           commentsWithText = commentsWithText.filter(r => r.susScore >= 80.3);
                         } else if (commentCategoryFilter === 'good') {
@@ -2958,6 +2976,7 @@ export default function App() {
                           );
                         });
                       })()}
+                      </div>
                     </div>
                   </div>
                 </div>
