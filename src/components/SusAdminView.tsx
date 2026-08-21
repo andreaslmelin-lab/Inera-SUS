@@ -1,17 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { SusSurvey, Product, SurveyRespondent, SusResponse } from '../types';
+import { SusSurvey, Product, SurveyRespondent, SusResponse, SurveyTheme } from '../types';
 import { 
   Plus, AlertCircle, ChevronRight, ChevronLeft, Copy, Check, Trash2, Upload, 
   Users, Link2, Calendar, FileText, Download, RefreshCw, ExternalLink, BarChart2,
-  CheckCircle2, Info, ArrowUpRight, ArrowDownRight, MessageSquare, Search, X, Edit3
+  CheckCircle2, Info, ArrowUpRight, ArrowDownRight, MessageSquare, Search, X, Edit3,
+  Palette, Eye, Sparkles, Layers, ShieldCheck, Stethoscope, Building2
 } from 'lucide-react';
 import { getSusGrade, calculateMedian } from '../lib/utils';
 import { loadMasterCatalog } from '../services/catalogMappingService';
 import { triggerSusMetricsSync } from '../services/syncService';
 import { CommentsSummaryCard } from './CommentsSummaryCard';
 import { synthesizeComments } from '../utils/commentSummarizer';
+import { THEME_LIST, getSurveyTheme } from '../utils/surveyThemes';
+import PublicSurveyView from './PublicSurveyView';
 
 const getBaseUrl = () => {
   if (typeof window !== 'undefined') {
@@ -42,6 +45,12 @@ export default function SusAdminView() {
   const [editFormData, setEditFormData] = useState<Partial<SusSurvey>>({});
   const [editError, setEditError] = useState('');
 
+  // Live Theme Preview Modal state
+  const [previewModal, setPreviewModal] = useState<{
+    survey: Partial<SusSurvey>;
+    theme: SurveyTheme;
+  } | null>(null);
+
   // Create wizard states
   const [step, setStep] = useState(1);
   const [productFilter, setProductFilter] = useState('');
@@ -53,6 +62,7 @@ export default function SusAdminView() {
   const [formData, setFormData] = useState<Partial<SusSurvey>>({
     status: 'active',
     type: 'general',
+    theme: '1177_invanare',
     endCondition: 'date',
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
@@ -337,6 +347,7 @@ export default function SusAdminView() {
         name,
         status: formData.status || 'active',
         type: formData.type || 'general',
+        theme: formData.theme || '1177_invanare',
         month: formData.month || new Date().getMonth() + 1,
         year: formData.year || new Date().getFullYear(),
         endCondition: formData.endCondition || 'date',
@@ -357,6 +368,7 @@ export default function SusAdminView() {
       setFormData({
         status: 'active',
         type: 'general',
+        theme: '1177_invanare',
         endCondition: 'date',
         month: new Date().getMonth() + 1,
         year: new Date().getFullYear(),
@@ -376,7 +388,7 @@ export default function SusAdminView() {
   };
 
   const openEditModal = (survey: SusSurvey) => {
-    setEditFormData({ ...survey });
+    setEditFormData({ ...survey, theme: survey.theme || '1177_invanare' });
     setEditError('');
     setIsEditing(true);
   };
@@ -407,6 +419,7 @@ export default function SusAdminView() {
         productId: editFormData.productId,
         status: editFormData.status || 'active',
         type: editFormData.type || 'general',
+        theme: editFormData.theme || '1177_invanare',
         month: editFormData.month || new Date().getMonth() + 1,
         year: editFormData.year || new Date().getFullYear(),
         endCondition: editFormData.endCondition || 'date',
@@ -528,12 +541,116 @@ export default function SusAdminView() {
   const downloadCsv = (content: string, fileName: string) => {
     const blob = new Blob(['\uFEFF' + content], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', fileName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const link = document.createElement('link');
+    const a = document.createElement('a');
+    a.href = url;
+    a.setAttribute('download', fileName);
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  // Reusable theme selector UI with 4 graphical forms
+  const renderThemeSelector = (
+    currentTheme: SurveyTheme = '1177_invanare',
+    onSelectTheme: (t: SurveyTheme) => void,
+    surveyContext?: Partial<SusSurvey>
+  ) => {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <label className="block text-sm font-bold text-inera-neutral-20 flex items-center gap-2">
+            <Palette size={16} className="text-inera-primary-40" />
+            <span>Välj grafisk form för omgången</span>
+          </label>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-inera-secondary-95 text-inera-neutral-40">
+            4 valbara former
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {THEME_LIST.map((themeMeta, idx) => {
+            const isSelected = (currentTheme || '1177_invanare') === themeMeta.id;
+            return (
+              <div
+                key={themeMeta.id}
+                onClick={() => onSelectTheme(themeMeta.id)}
+                className={`relative border-2 rounded-xl p-3.5 cursor-pointer transition-all flex flex-col justify-between ${
+                  isSelected
+                    ? 'border-inera-primary-40 bg-inera-primary-40/5 shadow-xs ring-2 ring-inera-primary-40/15'
+                    : 'border-inera-secondary-90 hover:border-inera-primary-40/60 bg-white hover:bg-inera-secondary-95/40'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${
+                        isSelected ? 'bg-inera-primary-40 text-white' : 'bg-inera-secondary-90 text-inera-neutral-30'
+                      }`}>
+                        {idx + 1}
+                      </span>
+                      <span className="font-bold text-sm text-inera-neutral-10">
+                        {themeMeta.name}
+                      </span>
+                    </div>
+                    {isSelected && (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-inera-primary-40 bg-inera-primary-40/10 px-2 py-0.5 rounded-md">
+                        <Check size={12} /> Vald
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-inera-neutral-30 mb-3 line-clamp-2">
+                    {themeMeta.description}
+                  </p>
+                </div>
+
+                <div className="pt-2 border-t border-inera-secondary-90/60 flex items-center justify-between text-xs">
+                  {/* Swatches & Source */}
+                  <div className="flex items-center gap-1.5">
+                    <div 
+                      className="w-3.5 h-3.5 rounded-full border border-black/10 shadow-2xs shrink-0" 
+                      style={{ backgroundColor: themeMeta.colors.primary }}
+                      title={`Primärfärg: ${themeMeta.colors.primary}`}
+                    />
+                    <div 
+                      className="w-3.5 h-3.5 rounded-full border border-black/10 shadow-2xs shrink-0" 
+                      style={{ backgroundColor: themeMeta.colors.accent }}
+                      title={`Accent: ${themeMeta.colors.accent}`}
+                    />
+                    <div 
+                      className="w-3.5 h-3.5 rounded-full border border-black/10 shadow-2xs shrink-0" 
+                      style={{ backgroundColor: themeMeta.colors.bg }}
+                      title={`Bakgrund: ${themeMeta.colors.bg}`}
+                    />
+                    <span className="text-[11px] text-inera-neutral-40 font-mono ml-1 truncate max-w-[130px]">
+                      {themeMeta.sourceLabel}
+                    </span>
+                  </div>
+
+                  {/* Preview action */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPreviewModal({
+                        survey: surveyContext || formData,
+                        theme: themeMeta.id
+                      });
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-inera-primary-40 hover:text-inera-primary-30 hover:underline px-1.5 py-0.5 rounded"
+                    title="Förhandsgranska tema i live-miljö"
+                  >
+                    <Eye size={13} />
+                    <span>Testa form</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
   };
 
   // Detailed survey view mode
@@ -608,6 +725,58 @@ export default function SusAdminView() {
             </span>
           </p>
         </div>
+
+        {/* Vald Grafisk Form Card */}
+        {(() => {
+          const activeThemeMeta = getSurveyTheme(selectedSurvey.theme);
+          return (
+            <div className="p-4 rounded-xl border border-inera-secondary-90 bg-white mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+              <div className="flex items-start sm:items-center gap-3">
+                <div 
+                  className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border"
+                  style={{ backgroundColor: activeThemeMeta.colors.primaryLight, borderColor: activeThemeMeta.colors.primary }}
+                >
+                  <Palette size={20} style={{ color: activeThemeMeta.colors.primary }} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-sm text-inera-neutral-10">Grafisk form: {activeThemeMeta.name}</span>
+                    <span 
+                      className="px-2 py-0.5 rounded-full text-xs font-bold border"
+                      style={{ 
+                        backgroundColor: activeThemeMeta.colors.badgeBg, 
+                        color: activeThemeMeta.colors.badgeText,
+                        borderColor: activeThemeMeta.colors.border 
+                      }}
+                    >
+                      {activeThemeMeta.sourceLabel}
+                    </span>
+                  </div>
+                  <p className="text-xs text-inera-neutral-40 mt-0.5">
+                    {activeThemeMeta.description}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPreviewModal({ survey: selectedSurvey, theme: selectedSurvey.theme || '1177_invanare' })}
+                  className="btn btn--s btn--primary flex items-center gap-1.5"
+                >
+                  <Eye size={15} /> Förhandsgranska enkät
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openEditModal(selectedSurvey)}
+                  className="btn btn--s btn--secondary flex items-center gap-1.5"
+                >
+                  <Palette size={15} /> Ändra form
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Key Metrics Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -960,6 +1129,15 @@ export default function SusAdminView() {
                   </div>
                 </div>
 
+                {/* Grafisk form väljare */}
+                <div className="pt-4 border-t border-inera-secondary-90">
+                  {renderThemeSelector(
+                    editFormData.theme,
+                    (t) => setEditFormData({ ...editFormData, theme: t }),
+                    editFormData
+                  )}
+                </div>
+
                 <div className="pt-4 border-t border-inera-secondary-90">
                   <label className="block text-sm font-bold text-inera-neutral-20 mb-2">Slutvillkor</label>
                   <div className="space-y-3 mb-4">
@@ -1227,6 +1405,15 @@ export default function SusAdminView() {
                 </div>
               </div>
             </div>
+
+            {/* 3. Välj grafisk form */}
+            <div className="pt-4 border-t border-inera-secondary-90">
+              {renderThemeSelector(
+                formData.theme,
+                (selectedTheme) => setFormData({ ...formData, theme: selectedTheme }),
+                formData
+              )}
+            </div>
           </div>
         )}
 
@@ -1416,6 +1603,7 @@ export default function SusAdminView() {
                 <p className="font-bold text-inera-neutral-10">Sammanfattning:</p>
                 <p><span className="text-inera-neutral-40">Produkt:</span> {selectedProduct?.name || 'Ej vald'}</p>
                 <p><span className="text-inera-neutral-40">Omgångsnamn:</span> {selectedProduct?.name || 'Produkt'}-{String(formData.month || 1).padStart(2, '0')}-{formData.year || new Date().getFullYear()}</p>
+                <p><span className="text-inera-neutral-40">Grafisk form:</span> <span className="font-semibold text-inera-neutral-10">{getSurveyTheme(formData.theme).name} ({getSurveyTheme(formData.theme).sourceLabel})</span></p>
                 <p><span className="text-inera-neutral-40">Slutvillkor:</span> {formData.endCondition === 'date' ? `Slutdatum ${formData.endDate || 'Ej satt'}` : `Max ${formData.maxResponses || 0} svar`}</p>
                 <p><span className="text-inera-neutral-40">Typ:</span> {formData.type === 'general' ? 'Generell länk' : 'Unika länkar'}</p>
               </div>
@@ -1520,9 +1708,29 @@ export default function SusAdminView() {
                   </div>
 
                   <h3 className="font-bold text-lg text-inera-neutral-10 mb-1">{survey.name}</h3>
-                  <p className="text-sm text-inera-neutral-30 mb-4">
+                  <p className="text-sm text-inera-neutral-30 mb-2">
                     Produkt: <span className="font-semibold">{surveyProduct?.name || survey.productId}</span>
                   </p>
+                  
+                  {/* Theme Badge */}
+                  {(() => {
+                    const themeMeta = getSurveyTheme(survey.theme);
+                    return (
+                      <div className="mb-4">
+                        <span 
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold border"
+                          style={{ 
+                            backgroundColor: themeMeta.colors.badgeBg, 
+                            color: themeMeta.colors.badgeText, 
+                            borderColor: themeMeta.colors.border 
+                          }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: themeMeta.colors.primary }} />
+                          {themeMeta.name}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div className="pt-3 border-t border-inera-secondary-90 flex items-center justify-between text-xs text-inera-neutral-40">
@@ -1665,6 +1873,15 @@ export default function SusAdminView() {
                 </div>
               </div>
 
+              {/* Grafisk form väljare */}
+              <div className="pt-4 border-t border-inera-secondary-90">
+                {renderThemeSelector(
+                  editFormData.theme,
+                  (t) => setEditFormData({ ...editFormData, theme: t }),
+                  editFormData
+                )}
+              </div>
+
               {/* Slutvillkor */}
               <div className="pt-4 border-t border-inera-secondary-90">
                 <label className="block text-sm font-bold text-inera-neutral-20 mb-2">Slutvillkor</label>
@@ -1797,6 +2014,73 @@ export default function SusAdminView() {
               >
                 <Check size={16} /> Spara ändringar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Live Interactive Theme Preview Modal */}
+      {previewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-inera-secondary-90 shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden">
+            {/* Top Toolbar */}
+            <div className="p-3.5 bg-white border-b border-inera-secondary-90 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-inera-primary-40/10 text-inera-primary-40 rounded-lg shrink-0">
+                  <Palette size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-inera-neutral-10 flex items-center gap-2">
+                    <span>Förhandsgranska grafisk form</span>
+                    <span className="text-[11px] font-normal text-inera-neutral-40 bg-inera-secondary-95 px-2 py-0.5 rounded-full border border-inera-secondary-90">
+                      Interaktivt testläge
+                    </span>
+                  </h3>
+                  <p className="text-xs text-inera-neutral-30">
+                    Växla mellan de 4 formerna nedan för att se hur enkäten renderas
+                  </p>
+                </div>
+              </div>
+
+              {/* Theme Switcher Quick Tabs */}
+              <div className="flex items-center gap-1 bg-inera-secondary-95 p-1 rounded-xl border border-inera-secondary-90 overflow-x-auto">
+                {THEME_LIST.map((tm, idx) => {
+                  const isActive = previewModal.theme === tm.id;
+                  return (
+                    <button
+                      key={tm.id}
+                      type="button"
+                      onClick={() => setPreviewModal({ ...previewModal, theme: tm.id })}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                        isActive
+                          ? 'bg-white text-inera-neutral-10 shadow-xs border border-inera-secondary-90'
+                          : 'text-inera-neutral-30 hover:text-inera-neutral-10'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: tm.colors.primary }} />
+                      <span>{idx + 1}. {tm.shortLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPreviewModal(null)}
+                className="p-1.5 text-inera-neutral-40 hover:text-inera-neutral-10 rounded-lg hover:bg-inera-secondary-90 transition-colors shrink-0"
+                title="Stäng förhandsgranskning"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Public Survey Container */}
+            <div className="flex-1 overflow-y-auto bg-slate-100">
+              <PublicSurveyView
+                previewSurvey={previewModal.survey}
+                previewTheme={previewModal.theme}
+                onClosePreview={() => setPreviewModal(null)}
+              />
             </div>
           </div>
         </div>

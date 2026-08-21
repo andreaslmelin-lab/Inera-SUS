@@ -32,12 +32,15 @@ export interface Product {
   comment?: string;
 }
 
+export type SurveyTheme = '1177_invanare' | '1177_vardpersonal' | 'inera_b2b' | 'inera_invanare';
+
 export interface SusSurvey {
   id: string;
   productId: string;
   name: string;
   status: 'active' | 'inactive';
   type: 'general' | 'unique';
+  theme?: SurveyTheme;
   month: number;
   year: number;
   endCondition: 'date' | 'maxResponses';
