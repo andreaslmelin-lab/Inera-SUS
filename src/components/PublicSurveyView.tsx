@@ -27,6 +27,7 @@ interface Props {
   respondentId?: string;
   previewSurvey?: Partial<SusSurvey>;
   previewTheme?: SurveyTheme;
+  previewProduct?: Product;
   onClosePreview?: () => void;
 }
 
@@ -35,6 +36,7 @@ export default function PublicSurveyView({
   respondentId, 
   previewSurvey,
   previewTheme,
+  previewProduct,
   onClosePreview 
 }: Props) {
   const isPreview = Boolean(previewSurvey || previewTheme);
@@ -42,7 +44,7 @@ export default function PublicSurveyView({
   const [survey, setSurvey] = useState<SusSurvey | null>(
     (previewSurvey as SusSurvey) || null
   );
-  const [product, setProduct] = useState<Product | null>(null);
+  const [product, setProduct] = useState<Product | null>(previewProduct || null);
   const [respondent, setRespondent] = useState<SurveyRespondent | null>(null);
   const [loading, setLoading] = useState(!isPreview);
   const [statusState, setStatusState] = useState<'active' | 'invalid' | 'closed' | 'already_used'>('active');
@@ -61,6 +63,7 @@ export default function PublicSurveyView({
   // Helper to determine the actual product name cleanly
   const getProductName = (): string => {
     if (product?.name) return product.name;
+    if (previewProduct?.name) return previewProduct.name;
     
     // Fallback if product is not fetched/found
     if (survey?.productId && survey.productId !== 'general') {
@@ -81,7 +84,7 @@ export default function PublicSurveyView({
       }
       return survey.name;
     }
-    return 'Tjänsten / Systemet';
+    return 'Tjänsten';
   };
 
   useEffect(() => {
@@ -89,13 +92,22 @@ export default function PublicSurveyView({
       if (previewSurvey) {
         setSurvey(previewSurvey as SusSurvey);
       }
+      if (previewProduct) {
+        setProduct(previewProduct);
+      } else if (previewSurvey?.productId) {
+        getDoc(doc(db, 'products', previewSurvey.productId))
+          .then((d) => {
+            if (d.exists()) setProduct({ ...d.data(), id: d.id } as Product);
+          })
+          .catch(() => {});
+      }
       setLoading(false);
       return;
     }
     if (surveyId) {
       loadSurveyData();
     }
-  }, [surveyId, respondentId, isPreview, previewSurvey]);
+  }, [surveyId, respondentId, isPreview, previewSurvey, previewProduct]);
 
   const loadSurveyData = async () => {
     if (!surveyId) return;
@@ -314,13 +326,12 @@ export default function PublicSurveyView({
   // Header branding bar customized per graphical form
   const renderHeader = () => {
     const pName = getProductName();
-    const titleText = `Utvärdering av ${pName}`;
 
     // Theme 1: 1177 Invånare (Classic white bar, 1177 logo/red dot, 1177 primary blue)
     if (themeMeta.id === '1177_invanare') {
       return (
         <header className="bg-white border-b-2 border-[#004b87] py-3.5 px-4 sm:px-6 shadow-xs">
-          <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="flex items-center tracking-tight">
                 <span className="font-extrabold text-2xl text-[#004b87] tracking-tighter">1177</span>
@@ -331,9 +342,10 @@ export default function PublicSurveyView({
                 Vårdguiden
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-[#e6f1f8] text-[#004b87] border border-[#d0e3f0]">
-                Invånare
+            <div className="flex items-center gap-2 max-w-[65%] justify-end">
+              <span className="hidden sm:inline text-xs text-inera-neutral-40 font-medium">Utvärdering av</span>
+              <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#e6f1f8] text-[#004b87] border border-[#d0e3f0] truncate shadow-2xs">
+                {pName}
               </span>
             </div>
           </div>
@@ -345,7 +357,7 @@ export default function PublicSurveyView({
     if (themeMeta.id === '1177_vardpersonal') {
       return (
         <header className="bg-[#0e3a53] border-b border-[#007c91] py-3.5 px-4 sm:px-6 shadow-md text-white">
-          <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="flex items-center tracking-tight">
                 <span className="font-extrabold text-2xl text-white tracking-tighter">1177</span>
@@ -357,9 +369,10 @@ export default function PublicSurveyView({
                 För vårdpersonal
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-[#007c91] text-white">
-                Kliniskt Stöd
+            <div className="flex items-center gap-2 max-w-[65%] justify-end">
+              <span className="hidden sm:inline text-xs text-white/70 font-medium">Utvärdering av</span>
+              <span className="px-3 py-1 rounded text-xs sm:text-sm font-bold uppercase tracking-wider bg-[#007c91] text-white border border-white/20 truncate shadow-2xs">
+                {pName}
               </span>
             </div>
           </div>
@@ -371,7 +384,7 @@ export default function PublicSurveyView({
     if (themeMeta.id === 'inera_b2b') {
       return (
         <header className="bg-[#800040] border-b border-[#5e002e] py-3.5 px-4 sm:px-6 shadow-md text-white">
-          <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded bg-white/10 flex items-center justify-center font-bold text-white tracking-tighter text-sm border border-white/20">
                 IN
@@ -381,9 +394,10 @@ export default function PublicSurveyView({
                 <span className="text-[10px] text-white/80 uppercase tracking-widest block mt-0.5">Digital Välfärd</span>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-md text-xs font-bold bg-white/15 text-white border border-white/20">
-                B2B & Organisation
+            <div className="flex items-center gap-2 max-w-[65%] justify-end">
+              <span className="hidden sm:inline text-xs text-white/70 font-medium">Utvärdering av</span>
+              <span className="px-3 py-1 rounded-md text-xs sm:text-sm font-bold bg-white/15 text-white border border-white/20 truncate shadow-2xs">
+                {pName}
               </span>
             </div>
           </div>
@@ -394,7 +408,7 @@ export default function PublicSurveyView({
     // Theme 4: Inera Invånare / Indra (Modern civic forest green, fresh mint accents)
     return (
       <header className="bg-white border-b-2 border-[#0c5a48] py-3.5 px-4 sm:px-6 shadow-xs">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-[#0c5a48] flex items-center justify-center text-white font-bold text-sm shadow-xs">
               <Sparkles size={16} />
@@ -408,9 +422,10 @@ export default function PublicSurveyView({
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-[#eef8f4] text-[#0c5a48] border border-[#cde4d9]">
-              Invånare (Indra)
+          <div className="flex items-center gap-2 max-w-[65%] justify-end">
+            <span className="hidden sm:inline text-xs text-emerald-800/70 font-medium">Utvärdering av</span>
+            <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#eef8f4] text-[#0c5a48] border border-[#cde4d9] truncate shadow-2xs">
+              {pName}
             </span>
           </div>
         </div>
@@ -673,14 +688,29 @@ export default function PublicSurveyView({
               className={`p-6 sm:p-8 shadow-lg border ${themeMeta.ui.borderRadius} transition-all`}
               style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border }}
             >
-              {/* Progress & counter */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider mb-2" style={{ color: themeMeta.colors.textMuted }}>
-                  <span>Fråga {step} av 10</span>
-                  <span>{Math.round((step / 10) * 100)}%</span>
+              {/* Product Context & Step Counter */}
+              <div className="flex items-center justify-between gap-2 pb-3.5 mb-5 border-b" style={{ borderColor: themeMeta.colors.border }}>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-xs font-semibold hidden sm:inline shrink-0" style={{ color: themeMeta.colors.textMuted }}>
+                    Utvärdering av:
+                  </span>
+                  <span 
+                    className="text-xs font-bold px-2.5 py-0.5 rounded-full truncate"
+                    style={{ backgroundColor: themeMeta.colors.primaryLight, color: themeMeta.colors.primary }}
+                  >
+                    {productName}
+                  </span>
                 </div>
+                <div className="flex items-center gap-1 text-xs font-bold shrink-0" style={{ color: themeMeta.colors.textMuted }}>
+                  <span>Fråga {step} av 10</span>
+                  <span className="opacity-70 font-normal">({Math.round((step / 10) * 100)}%)</span>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="mb-6">
                 <div 
-                  className="w-full h-2.5 rounded-full overflow-hidden"
+                  className="w-full h-2 rounded-full overflow-hidden"
                   style={{ backgroundColor: themeMeta.colors.primaryLight }}
                 >
                   <div 
@@ -769,11 +799,25 @@ export default function PublicSurveyView({
               className={`p-6 sm:p-8 shadow-lg border ${themeMeta.ui.borderRadius} transition-all`}
               style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border }}
             >
+              {/* Product Context Banner */}
+              <div className="flex items-center gap-2 pb-3 mb-4 border-b" style={{ borderColor: themeMeta.colors.border }}>
+                <span className="text-xs font-semibold hidden sm:inline shrink-0" style={{ color: themeMeta.colors.textMuted }}>
+                  Utvärdering av:
+                </span>
+                <span 
+                  className="text-xs font-bold px-2.5 py-0.5 rounded-full truncate"
+                  style={{ backgroundColor: themeMeta.colors.primaryLight, color: themeMeta.colors.primary }}
+                >
+                  {productName}
+                </span>
+                <span className="text-xs ml-auto" style={{ color: themeMeta.colors.textMuted }}>• Avslutande kommentar</span>
+              </div>
+
               <h2 className="text-2xl font-bold mb-2" style={{ color: themeMeta.colors.text }}>
                 Frivillig kommentar & Inskick
               </h2>
               <p className="text-sm mb-6" style={{ color: themeMeta.colors.textMuted }}>
-                Du har besvarat alla 10 påståenden. Du kan lämna en valfri kommentar nedan innan du skickar in.
+                Du har besvarat alla 10 påståenden för <strong>{productName}</strong>. Du kan lämna en valfri kommentar nedan innan du skickar in.
               </p>
 
               <div className="mb-6">
@@ -800,7 +844,7 @@ export default function PublicSurveyView({
               >
                 <div className="flex items-center justify-between mb-3">
                   <span className="font-bold text-xs uppercase" style={{ color: themeMeta.colors.textMuted }}>
-                    Dina svar (10 av 10 besvarade)
+                    Dina svar (10 av 10 besvarade för {productName})
                   </span>
                   <button 
                     onClick={() => setStep(1)} 
@@ -867,6 +911,10 @@ export default function PublicSurveyView({
                 }}
               >
                 <CheckCircle2 size={36} />
+              </div>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-4" style={{ backgroundColor: themeMeta.colors.primaryLight, color: themeMeta.colors.primary }}>
+                <span>{productName}</span>
               </div>
 
               <h2 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: themeMeta.colors.text }}>

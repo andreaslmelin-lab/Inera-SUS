@@ -653,6 +653,86 @@ export default function SusAdminView() {
     );
   };
 
+  // Reusable Live Preview Modal Helper
+  const renderPreviewModal = () => {
+    if (!previewModal) return null;
+
+    const pId = previewModal.survey?.productId;
+    const foundProd = pId ? products.find(p => p.id === pId) : null;
+    const surveyToPass: Partial<SusSurvey> = {
+      ...previewModal.survey,
+      name: previewModal.survey.name || (foundProd ? `${foundProd.name}-SUS` : 'Utvärdering av Tjänst'),
+      theme: previewModal.theme
+    };
+
+    return (
+      <div className="fixed inset-0 z-[80] flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
+        <div className="bg-white rounded-2xl border border-inera-secondary-90 shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden">
+          {/* Top Toolbar */}
+          <div className="p-3.5 bg-white border-b border-inera-secondary-90 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-inera-primary-40/10 text-inera-primary-40 rounded-lg shrink-0">
+                <Palette size={18} />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-inera-neutral-10 flex items-center gap-2">
+                  <span>Förhandsgranska grafisk form</span>
+                  <span className="text-[11px] font-normal text-inera-neutral-40 bg-inera-secondary-95 px-2 py-0.5 rounded-full border border-inera-secondary-90">
+                    Interaktivt testläge
+                  </span>
+                </h3>
+                <p className="text-xs text-inera-neutral-30">
+                  Växla mellan de 4 formerna nedan för att se hur enkäten renderas
+                </p>
+              </div>
+            </div>
+
+            {/* Theme Switcher Quick Tabs */}
+            <div className="flex items-center gap-1 bg-inera-secondary-95 p-1 rounded-xl border border-inera-secondary-90 overflow-x-auto max-w-full">
+              {THEME_LIST.map((tm, idx) => {
+                const isActive = previewModal.theme === tm.id;
+                return (
+                  <button
+                    key={tm.id}
+                    type="button"
+                    onClick={() => setPreviewModal({ ...previewModal, theme: tm.id })}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
+                      isActive
+                        ? 'bg-white text-inera-neutral-10 shadow-xs border border-inera-secondary-90'
+                        : 'text-inera-neutral-30 hover:text-inera-neutral-10 hover:bg-white/50'
+                    }`}
+                  >
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: tm.colors.primary }} />
+                    <span>{idx + 1}. {tm.shortLabel}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPreviewModal(null)}
+              className="p-1.5 text-inera-neutral-40 hover:text-inera-neutral-10 rounded-lg hover:bg-inera-secondary-90 transition-colors shrink-0"
+              title="Stäng förhandsgranskning"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Public Survey Container */}
+          <div className="flex-1 overflow-y-auto bg-slate-100">
+            <PublicSurveyView
+              previewSurvey={surveyToPass}
+              previewTheme={previewModal.theme}
+              previewProduct={foundProd || undefined}
+              onClosePreview={() => setPreviewModal(null)}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // Detailed survey view mode
   if (mode === 'detail' && selectedSurvey) {
     const surveyProduct = products.find(p => p.id === selectedSurvey.productId);
@@ -1279,6 +1359,9 @@ export default function SusAdminView() {
             </div>
           </div>
         )}
+
+        {/* Live Interactive Preview Modal */}
+        {renderPreviewModal()}
       </div>
     );
   }
@@ -1600,7 +1683,23 @@ export default function SusAdminView() {
 
               {/* Summary Preview */}
               <div className="p-4 bg-inera-secondary-95 border border-inera-secondary-90 rounded-xl space-y-2 text-sm mt-6">
-                <p className="font-bold text-inera-neutral-10">Sammanfattning:</p>
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-inera-neutral-10">Sammanfattning:</p>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModal({
+                      survey: {
+                        ...formData,
+                        productId: formData.productId,
+                        name: `${selectedProduct?.name || 'Produkt'}-${String(formData.month || 1).padStart(2, '0')}-${formData.year || new Date().getFullYear()}`
+                      },
+                      theme: formData.theme || '1177_invanare'
+                    })}
+                    className="btn btn--s btn--secondary flex items-center gap-1.5"
+                  >
+                    <Eye size={14} /> Förhandsgranska enkät
+                  </button>
+                </div>
                 <p><span className="text-inera-neutral-40">Produkt:</span> {selectedProduct?.name || 'Ej vald'}</p>
                 <p><span className="text-inera-neutral-40">Omgångsnamn:</span> {selectedProduct?.name || 'Produkt'}-{String(formData.month || 1).padStart(2, '0')}-{formData.year || new Date().getFullYear()}</p>
                 <p><span className="text-inera-neutral-40">Grafisk form:</span> <span className="font-semibold text-inera-neutral-10">{getSurveyTheme(formData.theme).name} ({getSurveyTheme(formData.theme).sourceLabel})</span></p>
@@ -1639,6 +1738,9 @@ export default function SusAdminView() {
             </button>
           )}
         </div>
+
+        {/* Live Interactive Preview Modal */}
+        {renderPreviewModal()}
       </div>
     );
   }
@@ -1690,16 +1792,31 @@ export default function SusAdminView() {
                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${survey.status === 'active' ? 'bg-inera-success-95 text-inera-success-40 border border-inera-success-40' : 'bg-inera-secondary-95 text-inera-neutral-40 border border-inera-secondary-90'}`}>
                       {survey.status === 'active' ? 'Aktiv' : 'Inaktiv'}
                     </span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-inera-neutral-40 uppercase">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-semibold text-inera-neutral-40 uppercase mr-1">
                         {survey.type === 'general' ? 'Generell' : 'Unik'}
                       </span>
                       <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewModal({
+                            survey: survey,
+                            theme: survey.theme || '1177_invanare'
+                          });
+                        }}
+                        className="p-1.5 text-inera-neutral-40 hover:text-inera-primary-40 hover:bg-inera-secondary-90 rounded transition-colors"
+                        title="Förhandsgranska enkät"
+                      >
+                        <Eye size={15} />
+                      </button>
+                      <button 
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           openEditModal(survey);
                         }}
-                        className="p-1 text-inera-neutral-40 hover:text-inera-primary-40 hover:bg-inera-secondary-90 rounded transition-colors"
+                        className="p-1.5 text-inera-neutral-40 hover:text-inera-primary-40 hover:bg-inera-secondary-90 rounded transition-colors"
                         title="Redigera omgång"
                       >
                         <Edit3 size={15} />
@@ -2020,71 +2137,7 @@ export default function SusAdminView() {
       )}
 
       {/* Live Interactive Theme Preview Modal */}
-      {previewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-inera-secondary-90 shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden">
-            {/* Top Toolbar */}
-            <div className="p-3.5 bg-white border-b border-inera-secondary-90 flex flex-wrap items-center justify-between gap-3 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-inera-primary-40/10 text-inera-primary-40 rounded-lg shrink-0">
-                  <Palette size={18} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-inera-neutral-10 flex items-center gap-2">
-                    <span>Förhandsgranska grafisk form</span>
-                    <span className="text-[11px] font-normal text-inera-neutral-40 bg-inera-secondary-95 px-2 py-0.5 rounded-full border border-inera-secondary-90">
-                      Interaktivt testläge
-                    </span>
-                  </h3>
-                  <p className="text-xs text-inera-neutral-30">
-                    Växla mellan de 4 formerna nedan för att se hur enkäten renderas
-                  </p>
-                </div>
-              </div>
-
-              {/* Theme Switcher Quick Tabs */}
-              <div className="flex items-center gap-1 bg-inera-secondary-95 p-1 rounded-xl border border-inera-secondary-90 overflow-x-auto">
-                {THEME_LIST.map((tm, idx) => {
-                  const isActive = previewModal.theme === tm.id;
-                  return (
-                    <button
-                      key={tm.id}
-                      type="button"
-                      onClick={() => setPreviewModal({ ...previewModal, theme: tm.id })}
-                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 ${
-                        isActive
-                          ? 'bg-white text-inera-neutral-10 shadow-xs border border-inera-secondary-90'
-                          : 'text-inera-neutral-30 hover:text-inera-neutral-10'
-                      }`}
-                    >
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: tm.colors.primary }} />
-                      <span>{idx + 1}. {tm.shortLabel}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setPreviewModal(null)}
-                className="p-1.5 text-inera-neutral-40 hover:text-inera-neutral-10 rounded-lg hover:bg-inera-secondary-90 transition-colors shrink-0"
-                title="Stäng förhandsgranskning"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Public Survey Container */}
-            <div className="flex-1 overflow-y-auto bg-slate-100">
-              <PublicSurveyView
-                previewSurvey={previewModal.survey}
-                previewTheme={previewModal.theme}
-                onClosePreview={() => setPreviewModal(null)}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {renderPreviewModal()}
     </div>
   );
 }
