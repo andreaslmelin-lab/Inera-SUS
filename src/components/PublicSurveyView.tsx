@@ -4,7 +4,8 @@ import { db } from '../firebase';
 import { SusSurvey, SurveyRespondent, Product, SurveyTheme } from '../types';
 import { 
   ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Mail, Send, ExternalLink, 
-  HelpCircle, ShieldCheck, Sparkles, Building2, Stethoscope, Users as UsersIcon, Heart
+  HelpCircle, ShieldCheck, Sparkles, Building2, Stethoscope, Users as UsersIcon, Heart,
+  Clock
 } from 'lucide-react';
 import { triggerSusMetricsSync } from '../services/syncService';
 import { getSurveyTheme, SURVEY_THEMES } from '../utils/surveyThemes';
@@ -323,113 +324,122 @@ export default function PublicSurveyView({
     }
   };
 
-  // Header branding bar customized per graphical form
+  // Header branding bar purely driven by theme configuration (ready for sketches/assets)
   const renderHeader = () => {
     const pName = getProductName();
+    const h = themeMeta.header;
 
-    // Theme 1: 1177 Invånare (Classic white bar, 1177 logo/red dot, 1177 primary blue)
-    if (themeMeta.id === '1177_invanare') {
-      return (
-        <header className="bg-white border-b-2 border-[#004b87] py-3.5 px-4 sm:px-6 shadow-xs">
-          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center tracking-tight">
-                <span className="font-extrabold text-2xl text-[#004b87] tracking-tighter">1177</span>
-                <span className="w-2.5 h-2.5 rounded-full bg-[#c8102e] inline-block ml-1 -translate-y-1"></span>
-              </div>
-              <div className="h-5 w-px bg-slate-200 mx-1 hidden sm:block"></div>
-              <span className="text-xs sm:text-sm font-bold text-[#004b87] hidden sm:inline-block">
-                Vårdguiden
-              </span>
-            </div>
-            <div className="flex items-center gap-2 max-w-[65%] justify-end">
-              <span className="hidden sm:inline text-xs text-inera-neutral-40 font-medium">Utvärdering av</span>
-              <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#e6f1f8] text-[#004b87] border border-[#d0e3f0] truncate shadow-2xs">
-                {pName}
-              </span>
-            </div>
-          </div>
-        </header>
-      );
-    }
-
-    // Theme 2: 1177 Vårdpersonal (Clinical slate/navy header, petrol/cyan badge)
-    if (themeMeta.id === '1177_vardpersonal') {
-      return (
-        <header className="bg-[#0e3a53] border-b border-[#007c91] py-3.5 px-4 sm:px-6 shadow-md text-white">
-          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center tracking-tight">
-                <span className="font-extrabold text-2xl text-white tracking-tighter">1177</span>
-                <span className="w-2.5 h-2.5 rounded-full bg-[#007c91] inline-block ml-1 -translate-y-1"></span>
-              </div>
-              <div className="h-5 w-px bg-white/20 mx-1 hidden sm:block"></div>
-              <span className="text-xs sm:text-sm font-semibold tracking-wide text-white/90 hidden sm:inline-flex items-center gap-1.5">
-                <Stethoscope size={16} className="text-[#00c0d8]" />
-                För vårdpersonal
-              </span>
-            </div>
-            <div className="flex items-center gap-2 max-w-[65%] justify-end">
-              <span className="hidden sm:inline text-xs text-white/70 font-medium">Utvärdering av</span>
-              <span className="px-3 py-1 rounded text-xs sm:text-sm font-bold uppercase tracking-wider bg-[#007c91] text-white border border-white/20 truncate shadow-2xs">
-                {pName}
-              </span>
-            </div>
-          </div>
-        </header>
-      );
-    }
-
-    // Theme 3: Inera B2B (Inera Plum #800040, Gold/sand accents, Corporate branding)
-    if (themeMeta.id === 'inera_b2b') {
-      return (
-        <header className="bg-[#800040] border-b border-[#5e002e] py-3.5 px-4 sm:px-6 shadow-md text-white">
-          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded bg-white/10 flex items-center justify-center font-bold text-white tracking-tighter text-sm border border-white/20">
-                IN
-              </div>
-              <div>
-                <span className="font-bold text-lg text-white tracking-wide block leading-none">INERA</span>
-                <span className="text-[10px] text-white/80 uppercase tracking-widest block mt-0.5">Digital Välfärd</span>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 max-w-[65%] justify-end">
-              <span className="hidden sm:inline text-xs text-white/70 font-medium">Utvärdering av</span>
-              <span className="px-3 py-1 rounded-md text-xs sm:text-sm font-bold bg-white/15 text-white border border-white/20 truncate shadow-2xs">
-                {pName}
-              </span>
-            </div>
-          </div>
-        </header>
-      );
-    }
-
-    // Theme 4: Inera Invånare / Indra (Modern civic forest green, fresh mint accents)
     return (
-      <header className="bg-white border-b-2 border-[#0c5a48] py-3.5 px-4 sm:px-6 shadow-xs">
+      <header 
+        className="py-3.5 px-4 sm:px-6 shadow-xs border-b transition-colors"
+        style={{ 
+          backgroundColor: h.bg, 
+          color: h.text, 
+          borderColor: h.borderBottom 
+        }}
+      >
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
+          {/* Logo & Brand text */}
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-[#0c5a48] flex items-center justify-center text-white font-bold text-sm shadow-xs">
-              <Sparkles size={16} />
-            </div>
-            <div>
-              <span className="font-bold text-base sm:text-lg text-[#0c5a48] block leading-none">
-                Inera Invånartjänster
-              </span>
-              <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">
-                Digitala medborgartjänster
-              </span>
-            </div>
+            {h.customLogoUrl ? (
+              <img 
+                src={h.customLogoUrl} 
+                alt={h.customLogoAlt || h.title} 
+                className="h-8 w-auto object-contain"
+                referrerPolicy="no-referrer"
+              />
+            ) : h.logoType === '1177_invanare' ? (
+              <div className="flex items-center tracking-tight">
+                <span className="font-extrabold text-2xl tracking-tighter" style={{ color: h.text }}>{h.title}</span>
+                {h.dotColor && <span className="w-2.5 h-2.5 rounded-full inline-block ml-1 -translate-y-1" style={{ backgroundColor: h.dotColor }}></span>}
+              </div>
+            ) : h.logoType === '1177_vardpersonal' ? (
+              <div className="flex items-center tracking-tight">
+                <span className="font-extrabold text-2xl tracking-tighter" style={{ color: h.text }}>{h.title}</span>
+                {h.dotColor && <span className="w-2.5 h-2.5 rounded-full inline-block ml-1 -translate-y-1" style={{ backgroundColor: h.dotColor }}></span>}
+              </div>
+            ) : h.logoType === 'inera_b2b' ? (
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded bg-white/10 flex items-center justify-center font-bold text-white tracking-tighter text-sm border border-white/20">
+                  IN
+                </div>
+                <div>
+                  <span className="font-bold text-lg text-white tracking-wide block leading-none">{h.title}</span>
+                  {h.subtitle && <span className="text-[10px] text-white/80 uppercase tracking-widest block mt-0.5">{h.subtitle}</span>}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-xs" style={{ backgroundColor: h.text }}>
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <span className="font-bold text-base sm:text-lg block leading-none" style={{ color: h.text }}>{h.title}</span>
+                  {h.subtitle && <span className="text-[10px] font-semibold block mt-0.5 opacity-80" style={{ color: h.text }}>{h.subtitle}</span>}
+                </div>
+              </div>
+            )}
+
+            {/* Subtitle / Department tag if applicable */}
+            {h.subtitle && (h.logoType === '1177_invanare' || h.logoType === '1177_vardpersonal') && (
+              <>
+                <div className="h-5 w-px opacity-25 mx-1 hidden sm:block" style={{ backgroundColor: h.text }}></div>
+                <span className="text-xs sm:text-sm font-semibold tracking-wide hidden sm:inline-flex items-center gap-1.5" style={{ color: h.text }}>
+                  {h.iconName === 'stethoscope' && <Stethoscope size={16} className="text-[#00c0d8]" />}
+                  {h.subtitle}
+                </span>
+              </>
+            )}
           </div>
+
+          {/* Product Identification Badge (Never theme badge) */}
           <div className="flex items-center gap-2 max-w-[65%] justify-end">
-            <span className="hidden sm:inline text-xs text-emerald-800/70 font-medium">Utvärdering av</span>
-            <span className="px-3 py-1 rounded-full text-xs sm:text-sm font-bold bg-[#eef8f4] text-[#0c5a48] border border-[#cde4d9] truncate shadow-2xs">
+            <span className="hidden sm:inline text-xs font-medium opacity-80" style={{ color: h.text }}>Utvärdering av</span>
+            <span 
+              className="px-3 py-1 rounded-full text-xs sm:text-sm font-bold border truncate shadow-2xs transition-colors"
+              style={{ 
+                backgroundColor: h.productBadgeBg, 
+                color: h.productBadgeText, 
+                borderColor: h.productBadgeBorder 
+              }}
+            >
               {pName}
             </span>
           </div>
         </div>
       </header>
+    );
+  };
+
+  // Data-driven footer driven by theme configuration (ready for sketches/assets)
+  const renderFooter = () => {
+    const f = themeMeta.footer;
+    return (
+      <footer 
+        className="py-4 px-6 text-center text-xs border-t transition-colors"
+        style={{ 
+          backgroundColor: f.bg, 
+          borderColor: f.borderTop, 
+          color: f.text 
+        }}
+      >
+        <p>{f.mainText}</p>
+        {f.links && f.links.length > 0 && (
+          <div className="flex items-center justify-center gap-4 mt-2">
+            {f.links.map((link) => (
+              <a 
+                key={link.url} 
+                href={link.url} 
+                target="_blank" 
+                rel="noreferrer" 
+                className="hover:underline opacity-80 hover:opacity-100"
+              >
+                {link.label}
+              </a>
+            ))}
+          </div>
+        )}
+      </footer>
     );
   };
 
@@ -503,12 +513,7 @@ export default function PublicSurveyView({
             </div>
           </main>
         </div>
-        <footer 
-          className="py-4 px-6 text-center text-xs border-t"
-          style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border, color: themeMeta.colors.textMuted }}
-        >
-          {themeMeta.ui.footerText}
-        </footer>
+        {renderFooter()}
       </div>
     );
   }
@@ -560,12 +565,7 @@ export default function PublicSurveyView({
             </div>
           </main>
         </div>
-        <footer 
-          className="py-4 px-6 text-center text-xs border-t"
-          style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border, color: themeMeta.colors.textMuted }}
-        >
-          {themeMeta.ui.footerText}
-        </footer>
+        {renderFooter()}
       </div>
     );
   }
@@ -597,12 +597,7 @@ export default function PublicSurveyView({
             </div>
           </main>
         </div>
-        <footer 
-          className="py-4 px-6 text-center text-xs border-t"
-          style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border, color: themeMeta.colors.textMuted }}
-        >
-          {themeMeta.ui.footerText}
-        </footer>
+        {renderFooter()}
       </div>
     );
   }
@@ -611,7 +606,7 @@ export default function PublicSurveyView({
   const mailtoSubject = encodeURIComponent(`SUS-mätning ${survey?.name || productName}`);
   const mailtoUrl = `mailto:ux@inera.se?subject=${mailtoSubject}`;
 
-  const defaultIntro = `Vi vill veta hur du upplevde att använda ${productName}. Enkäten består av tio påståenden och tar cirka två minuter att besvara. Utgå från din senaste användning av produkten när du svarar.`;
+  const defaultIntro = `Vi vill veta hur du upplevde att använda ${productName}. Enkäten består av tio påståenden. Utgå från din senaste användning av produkten när du svarar.`;
   const displayIntro = survey?.introText
     ? survey.introText.replaceAll('[Produkten]', productName)
     : defaultIntro;
@@ -640,14 +635,16 @@ export default function PublicSurveyView({
               className={`p-6 sm:p-10 shadow-lg border ${themeMeta.ui.borderRadius} transition-all`}
               style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border }}
             >
-              <div className="flex items-center gap-2 mb-3">
-                <span 
-                  className="px-2.5 py-0.5 rounded-full text-xs font-bold"
-                  style={{ backgroundColor: themeMeta.colors.badgeBg, color: themeMeta.colors.badgeText }}
-                >
-                  {themeMeta.shortLabel}
-                </span>
-                <span className="text-xs" style={{ color: themeMeta.colors.textMuted }}>• Cirka 2 minuter</span>
+              <div 
+                className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium border"
+                style={{ 
+                  backgroundColor: themeMeta.colors.primaryLight, 
+                  borderColor: themeMeta.colors.border,
+                  color: themeMeta.colors.primary 
+                }}
+              >
+                <Clock size={16} className="shrink-0" />
+                <span>Ungefärlig tid att fylla i enkäten, 1-2 minuter.</span>
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: themeMeta.colors.text }}>
@@ -951,16 +948,7 @@ export default function PublicSurveyView({
         </main>
       </div>
 
-      <footer 
-        className="py-4 px-6 text-center text-xs border-t transition-colors"
-        style={{ 
-          backgroundColor: themeMeta.colors.cardBg, 
-          borderColor: themeMeta.colors.border, 
-          color: themeMeta.colors.textMuted 
-        }}
-      >
-        {themeMeta.ui.footerText}
-      </footer>
+      {renderFooter()}
     </div>
   );
 }

@@ -8,6 +8,34 @@ export interface SurveyThemeMeta {
   sourceUrl: string;
   sourceLabel: string;
   category: 'invånare' | 'personal' | 'b2b';
+  
+  // Header configuration (ready to receive exact assets and tokens from sketches)
+  header: {
+    logoType: '1177_invanare' | '1177_vardpersonal' | 'inera_b2b' | 'inera_invanare' | 'custom';
+    customLogoUrl?: string;
+    customLogoAlt?: string;
+    title: string;
+    subtitle?: string;
+    dotColor?: string;
+    iconName?: 'none' | 'stethoscope' | 'sparkles' | 'building';
+    bg: string;
+    text: string;
+    borderBottom: string;
+    productBadgeBg: string;
+    productBadgeText: string;
+    productBadgeBorder: string;
+  };
+
+  // Footer configuration (ready to receive texts/links from sketches)
+  footer: {
+    bg: string;
+    text: string;
+    borderTop: string;
+    mainText: string;
+    links?: Array<{ label: string; url: string }>;
+  };
+
+  // Global theme colors
   colors: {
     primary: string;
     primaryHover: string;
@@ -18,18 +46,15 @@ export interface SurveyThemeMeta {
     text: string;
     textMuted: string;
     border: string;
-    headerBg: string;
-    headerText: string;
-    headerBorder: string;
     badgeBg: string;
     badgeText: string;
   };
+
+  // Common UI styling tokens
   ui: {
     fontDisplay: string;
     borderRadius: string;
-    headerBadge?: string;
     senderName: string;
-    footerText: string;
     scaleStyle: 'rounded-pills' | 'structured-tiles' | 'brand-cards' | 'fresh-circles';
     accentGradient?: string;
   };
@@ -44,28 +69,42 @@ export const SURVEY_THEMES: Record<SurveyTheme, SurveyThemeMeta> = {
     sourceUrl: 'https://www.1177.se',
     sourceLabel: 'www.1177.se',
     category: 'invånare',
+    header: {
+      logoType: '1177_invanare',
+      title: '1177',
+      subtitle: 'Vårdguiden',
+      dotColor: '#c8102e',
+      iconName: 'none',
+      bg: '#ffffff',
+      text: '#004b87',
+      borderBottom: '#004b87',
+      productBadgeBg: '#e6f1f8',
+      productBadgeText: '#004b87',
+      productBadgeBorder: '#d0e3f0',
+    },
+    footer: {
+      bg: '#ffffff',
+      text: '#4d5d6c',
+      borderTop: '#d7e2ea',
+      mainText: '1177 — Sveriges samlade hälso- och sjukvårdsinformation på webben.',
+    },
     colors: {
       primary: '#004b87',       // 1177 Mörkblå
       primaryHover: '#003662',
       primaryLight: '#e6f1f8',
-      accent: '#c8102e',        // 1177 Röd/accent
+      accent: '#c8102e',        // 1177 Röd accent
       bg: '#f4f7f9',
       cardBg: '#ffffff',
       text: '#1a232c',
       textMuted: '#4d5d6c',
       border: '#d7e2ea',
-      headerBg: '#ffffff',
-      headerText: '#004b87',
-      headerBorder: '#004b87',
       badgeBg: '#e6f1f8',
       badgeText: '#004b87',
     },
     ui: {
       fontDisplay: 'font-sans',
       borderRadius: 'rounded-2xl',
-      headerBadge: 'Invånartjänst',
       senderName: '1177',
-      footerText: '1177 — Sveriges samlade hälso- och sjukvårdsinformation på webben.',
       scaleStyle: 'rounded-pills',
       accentGradient: 'from-[#004b87] to-[#006699]'
     }
@@ -79,6 +118,25 @@ export const SURVEY_THEMES: Record<SurveyTheme, SurveyThemeMeta> = {
     sourceUrl: 'https://vardpersonal.1177.se',
     sourceLabel: 'vardpersonal.1177.se',
     category: 'personal',
+    header: {
+      logoType: '1177_vardpersonal',
+      title: '1177',
+      subtitle: 'För vårdpersonal',
+      dotColor: '#007c91',
+      iconName: 'stethoscope',
+      bg: '#0e3a53',
+      text: '#ffffff',
+      borderBottom: '#007c91',
+      productBadgeBg: '#007c91',
+      productBadgeText: '#ffffff',
+      productBadgeBorder: 'rgba(255, 255, 255, 0.2)',
+    },
+    footer: {
+      bg: '#ffffff',
+      text: '#475d70',
+      borderTop: '#ccdbe5',
+      mainText: '1177 Vårdpersonal — Nationellt kliniskt kunskapsstöd och tjänster för hälso- och sjukvården.',
+    },
     colors: {
       primary: '#0e3a53',       // Klinisk Djupblå
       primaryHover: '#092739',
@@ -89,18 +147,13 @@ export const SURVEY_THEMES: Record<SurveyTheme, SurveyThemeMeta> = {
       text: '#112233',
       textMuted: '#475d70',
       border: '#ccdbe5',
-      headerBg: '#0e3a53',
-      headerText: '#ffffff',
-      headerBorder: '#007c91',
       badgeBg: '#007c91',
       badgeText: '#ffffff',
     },
     ui: {
       fontDisplay: 'font-sans',
       borderRadius: 'rounded-xl',
-      headerBadge: 'För vårdpersonal',
       senderName: '1177 Vårdpersonal',
-      footerText: '1177 Vårdpersonal — Nationellt kliniskt kunskapsstöd och tjänster för hälso- och sjukvården.',
       scaleStyle: 'structured-tiles',
       accentGradient: 'from-[#0e3a53] to-[#007c91]'
     }
@@ -114,6 +167,24 @@ export const SURVEY_THEMES: Record<SurveyTheme, SurveyThemeMeta> = {
     sourceUrl: 'https://www.inera.se',
     sourceLabel: 'www.inera.se',
     category: 'b2b',
+    header: {
+      logoType: 'inera_b2b',
+      title: 'INERA',
+      subtitle: 'Digital Välfärd',
+      iconName: 'none',
+      bg: '#800040',
+      text: '#ffffff',
+      borderBottom: '#5e002e',
+      productBadgeBg: 'rgba(255, 255, 255, 0.15)',
+      productBadgeText: '#ffffff',
+      productBadgeBorder: 'rgba(255, 255, 255, 0.25)',
+    },
+    footer: {
+      bg: '#ffffff',
+      text: '#5c5258',
+      borderTop: '#ebdcd3',
+      mainText: 'Inera AB — Digital infrastruktur och tjänster för Sveriges välfärd.',
+    },
     colors: {
       primary: '#800040',       // Inera Signatur Purpur/Plommon
       primaryHover: '#600030',
@@ -124,18 +195,13 @@ export const SURVEY_THEMES: Record<SurveyTheme, SurveyThemeMeta> = {
       text: '#1d191c',
       textMuted: '#5c5258',
       border: '#ebdcd3',
-      headerBg: '#800040',
-      headerText: '#ffffff',
-      headerBorder: '#600030',
       badgeBg: '#fdf2f7',
       badgeText: '#800040',
     },
     ui: {
       fontDisplay: 'font-serif',
       borderRadius: 'rounded-2xl',
-      headerBadge: 'Organisation & Kund',
       senderName: 'Inera',
-      footerText: 'Inera AB — Digital infrastruktur och tjänster för Sveriges välfärd.',
       scaleStyle: 'brand-cards',
       accentGradient: 'from-[#800040] to-[#500028]'
     }
@@ -149,6 +215,24 @@ export const SURVEY_THEMES: Record<SurveyTheme, SurveyThemeMeta> = {
     sourceUrl: 'https://www.gymnasieantagningen.storsthlm.se/personal/verktyg/indra/',
     sourceLabel: 'Indra (Storsthlm)',
     category: 'invånare',
+    header: {
+      logoType: 'inera_invanare',
+      title: 'Inera Invånartjänster',
+      subtitle: 'Digitala medborgartjänster',
+      iconName: 'sparkles',
+      bg: '#ffffff',
+      text: '#0c5a48',
+      borderBottom: '#0c5a48',
+      productBadgeBg: '#eef8f4',
+      productBadgeText: '#0c5a48',
+      productBadgeBorder: '#cde4d9',
+    },
+    footer: {
+      bg: '#ffffff',
+      text: '#476356',
+      borderTop: '#cde4d9',
+      mainText: 'Inera Invånartjänster — En del av välfärdens gemensamma digitala ekosystem.',
+    },
     colors: {
       primary: '#0c5a48',       // Indra Skogsgrön/Smaragd
       primaryHover: '#073f32',
@@ -159,18 +243,13 @@ export const SURVEY_THEMES: Record<SurveyTheme, SurveyThemeMeta> = {
       text: '#13261f',
       textMuted: '#476356',
       border: '#cde4d9',
-      headerBg: '#ffffff',
-      headerText: '#0c5a48',
-      headerBorder: '#18a37e',
       badgeBg: '#eef8f4',
       badgeText: '#0c5a48',
     },
     ui: {
       fontDisplay: 'font-sans',
       borderRadius: 'rounded-2xl',
-      headerBadge: 'Invånartjänst',
       senderName: 'Inera Invånartjänster',
-      footerText: 'Inera Invånartjänster — En del av välfärdens gemensamma digitala ekosystem.',
       scaleStyle: 'fresh-circles',
       accentGradient: 'from-[#0c5a48] to-[#18a37e]'
     }
@@ -191,3 +270,4 @@ export function getSurveyTheme(themeKey?: string | null): SurveyThemeMeta {
   // Standard fallback är 1177 invånare
   return SURVEY_THEMES['1177_invanare'];
 }
+

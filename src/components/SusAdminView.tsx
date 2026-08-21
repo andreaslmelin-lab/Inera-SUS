@@ -1567,7 +1567,7 @@ export default function SusAdminView() {
                 <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Inledningstext (använd [Produkten] som platshållare)</label>
                 <textarea 
                   className="input w-full text-sm h-20" 
-                  placeholder={`Vi vill veta hur du upplevde att använda [Produkten]. Enkäten består av tio påståenden och tar cirka två minuter...`}
+                  placeholder={`Vi vill veta hur du upplevde att använda [Produkten]. Enkäten består av tio påståenden. Ungefärlig tid att fylla i enkäten, 1-2 minuter...`}
                   value={formData.introText || ''}
                   onChange={(e) => setFormData({...formData, introText: e.target.value})}
                 />
