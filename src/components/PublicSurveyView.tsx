@@ -352,7 +352,7 @@ export default function PublicSurveyView({
 
     return (
       <header className="bg-white border-b border-[#e5e1da] px-4 sm:px-12 py-3.5 flex items-center justify-between">
-        {/* Left Side: Brand Logo + Separator + "Namn" */}
+        {/* Left Side: Brand Logo + Separator + Product Name */}
         <div className="flex items-center gap-3">
           {h.logoType === 'inera' ? (
             <img 
@@ -370,39 +370,23 @@ export default function PublicSurveyView({
           {/* Vertical divider */}
           <div className="h-6 w-px bg-[#cfd7dd] mx-1"></div>
 
-          {/* "Namn" title in specified color */}
+          {/* Product name in specified brand theme color */}
           <span 
             className="text-lg sm:text-xl font-bold font-sans tracking-tight"
             style={{ color: h.nameColor }}
           >
-            {h.nameText || 'Namn'}
-          </span>
-        </div>
-
-        {/* Right Side: "Utvärdering av: [ Produktnamn ]" */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs sm:text-sm text-neutral-700 hidden sm:inline font-normal">
-            Utvärdering av:
-          </span>
-          <div 
-            className="border px-3 py-1 text-xs sm:text-sm font-normal bg-white"
-            style={{ 
-              borderColor: h.productTagBorder, 
-              color: h.productTagText 
-            }}
-          >
             {pName}
-          </div>
+          </span>
         </div>
       </header>
     );
   };
 
-  // Footer (exact match to sketches)
+  // Footer (sits naturally below card content)
   const renderFooter = () => {
     const f = themeMeta.footer;
     return (
-      <footer className="py-6 text-center text-sm" style={{ color: f.textColor }}>
+      <footer className="py-6 pb-10 text-center text-sm" style={{ color: f.textColor }}>
         <p>{f.mainText}</p>
       </footer>
     );
@@ -447,26 +431,24 @@ export default function PublicSurveyView({
   if (statusState === 'closed') {
     return (
       <div 
-        className="min-h-screen flex flex-col justify-between"
+        className="min-h-screen flex flex-col font-sans"
         style={{ backgroundColor: themeMeta.colors.bg }}
       >
-        <div>
-          {renderPreviewBanner()}
-          {renderHeader()}
-          <main className="max-w-2xl mx-auto px-4 py-12">
-            <div className="bg-white p-8 sm:p-10 rounded-2xl border border-[#e5e1da] shadow-md text-center">
-              <div className="w-16 h-16 rounded-full bg-neutral-100 text-neutral-600 mx-auto mb-4 flex items-center justify-center">
-                <AlertCircle size={32} />
-              </div>
-              <h1 className="text-2xl font-bold mb-3" style={{ color: themeMeta.colors.heading }}>
-                Mätningen är avslutad
-              </h1>
-              <p className="text-neutral-700 leading-relaxed">
-                Den här mätningen är nu avslutad. Tack för ditt intresse.
-              </p>
+        {renderPreviewBanner()}
+        {renderHeader()}
+        <main className="max-w-2xl mx-auto px-4 py-8 sm:py-12 w-full">
+          <div className="bg-white p-8 sm:p-10 rounded-2xl border border-[#e5e1da] shadow-md text-center">
+            <div className="w-16 h-16 rounded-full bg-neutral-100 text-neutral-600 mx-auto mb-4 flex items-center justify-center">
+              <AlertCircle size={32} />
             </div>
-          </main>
-        </div>
+            <h1 className="text-2xl font-bold mb-3" style={{ color: themeMeta.colors.heading }}>
+              Mätningen är avslutad
+            </h1>
+            <p className="text-neutral-700 leading-relaxed">
+              Den här mätningen är nu avslutad. Tack för ditt intresse.
+            </p>
+          </div>
+        </main>
         {renderFooter()}
       </div>
     );
@@ -480,35 +462,33 @@ export default function PublicSurveyView({
 
     return (
       <div 
-        className="min-h-screen flex flex-col justify-between"
+        className="min-h-screen flex flex-col font-sans"
         style={{ backgroundColor: themeMeta.colors.bg }}
       >
-        <div>
-          {renderPreviewBanner()}
-          {renderHeader()}
-          <main className="max-w-2xl mx-auto px-4 py-12">
-            <div className="bg-white p-8 sm:p-10 rounded-2xl border border-[#e5e1da] shadow-md">
-              <h1 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: themeMeta.colors.heading }}>
-                Utvärdering av {pName}
-              </h1>
+        {renderPreviewBanner()}
+        {renderHeader()}
+        <main className="max-w-2xl mx-auto px-4 py-8 sm:py-12 w-full">
+          <div className="bg-white p-8 sm:p-10 rounded-2xl border border-[#e5e1da] shadow-md">
+            <h1 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: themeMeta.colors.heading }}>
+              Utvärdering av {pName}
+            </h1>
 
-              <div className="leading-relaxed space-y-4 mb-8 text-neutral-700 text-base">
-                <p>Denna länk har redan använts för att registrera en utvärdering för {pName} och kan inte användas fler gånger.</p>
-              </div>
-
-              <div className="rounded-xl border border-neutral-300 p-4 sm:p-5 flex items-center justify-between bg-white text-sm sm:text-base">
-                <span className="text-neutral-700">Frågor eller funderingar</span>
-                <a 
-                  href={mailtoUrl}
-                  className="inline-flex items-center gap-2 font-normal underline hover:opacity-80"
-                  style={{ color: themeMeta.colors.link }}
-                >
-                  <Mail size={18} /> ux@inera.se
-                </a>
-              </div>
+            <div className="leading-relaxed space-y-4 mb-8 text-neutral-700 text-base">
+              <p>Denna länk har redan använts för att registrera en utvärdering för {pName} och kan inte användas fler gånger.</p>
             </div>
-          </main>
-        </div>
+
+            <div className="rounded-xl border border-neutral-300 p-4 sm:p-5 flex items-center justify-between bg-white text-sm sm:text-base">
+              <span className="text-neutral-700">Frågor eller funderingar</span>
+              <a 
+                href={mailtoUrl}
+                className="inline-flex items-center gap-2 font-normal underline hover:opacity-80"
+                style={{ color: themeMeta.colors.link }}
+              >
+                <Mail size={18} /> ux@inera.se
+              </a>
+            </div>
+          </div>
+        </main>
         {renderFooter()}
       </div>
     );
@@ -518,26 +498,24 @@ export default function PublicSurveyView({
   if (statusState === 'invalid' || (!survey && !isPreview)) {
     return (
       <div 
-        className="min-h-screen flex flex-col justify-between"
+        className="min-h-screen flex flex-col font-sans"
         style={{ backgroundColor: themeMeta.colors.bg }}
       >
-        <div>
-          {renderPreviewBanner()}
-          {renderHeader()}
-          <main className="max-w-2xl mx-auto px-4 py-12">
-            <div className="bg-white p-8 sm:p-10 rounded-2xl border border-[#e5e1da] shadow-md text-center">
-              <div className="w-16 h-16 rounded-full bg-red-50 text-red-600 mx-auto mb-4 flex items-center justify-center">
-                <AlertCircle size={32} />
-              </div>
-              <h1 className="text-2xl font-bold mb-3 text-neutral-900">
-                Ogiltig enkätlänk
-              </h1>
-              <p className="text-neutral-700 leading-relaxed">
-                Länken du använde verkar vara ogiltig eller så har enkäten tagits bort. Kontrollera adressen och försök igen.
-              </p>
+        {renderPreviewBanner()}
+        {renderHeader()}
+        <main className="max-w-2xl mx-auto px-4 py-8 sm:py-12 w-full">
+          <div className="bg-white p-8 sm:p-10 rounded-2xl border border-[#e5e1da] shadow-md text-center">
+            <div className="w-16 h-16 rounded-full bg-red-50 text-red-600 mx-auto mb-4 flex items-center justify-center">
+              <AlertCircle size={32} />
             </div>
-          </main>
-        </div>
+            <h1 className="text-2xl font-bold mb-3 text-neutral-900">
+              Ogiltig enkätlänk
+            </h1>
+            <p className="text-neutral-700 leading-relaxed">
+              Länken du använde verkar vara ogiltig eller så har enkäten tagits bort. Kontrollera adressen och försök igen.
+            </p>
+          </div>
+        </main>
         {renderFooter()}
       </div>
     );
@@ -562,14 +540,13 @@ export default function PublicSurveyView({
 
   return (
     <div 
-      className="min-h-screen flex flex-col justify-between font-sans"
+      className="min-h-screen flex flex-col font-sans"
       style={{ backgroundColor: themeMeta.colors.bg, color: themeMeta.colors.text }}
     >
-      <div>
-        {renderPreviewBanner()}
-        {renderHeader()}
+      {renderPreviewBanner()}
+      {renderHeader()}
 
-        <main className="max-w-2xl mx-auto px-4 py-6 sm:py-8">
+      <main className="max-w-2xl mx-auto px-4 py-6 sm:py-8 w-full flex-grow-0">
           {/* Steg 0: Inledning / Startskärm */}
           {step === 0 && (
             <div className="bg-white rounded-2xl border border-[#e5e1da] shadow-md p-6 sm:p-10">
@@ -877,9 +854,8 @@ export default function PublicSurveyView({
             </div>
           )}
         </main>
-      </div>
 
-      {renderFooter()}
-    </div>
-  );
-}
+        {renderFooter()}
+      </div>
+    );
+  }
