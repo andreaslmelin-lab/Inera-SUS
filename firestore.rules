@@ -31,11 +31,26 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    function isSuperAdminEmail() {
+      return "email" in request.auth.token && (
+        request.auth.token.email == "andreas.l.melin@gmail.com" ||
+        request.auth.token.email == "andreas.melin@inera.se"
+      );
+    }
+
     function isAdmin() {
       return isAuthenticated() && (
-        ("email" in request.auth.token && request.auth.token.email == "andreas.l.melin@gmail.com") ||
+        isSuperAdminEmail() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isEditor() {
+      return isAdmin() || (
+        isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor'
       );
     }
 
@@ -43,6 +58,13 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email']) &&
              data.uid is string && data.email is string;
+    }
+
+    function isValidInvitation(data) {
+      return data.keys().hasAll(['code', 'email', 'role', 'status']) &&
+             data.code is string && data.email is string &&
+             (data.role == 'admin' || data.role == 'editor' || data.role == 'viewer') &&
+             (data.status == 'active' || data.status == 'used' || data.status == 'revoked');
     }
 
     function isValidProduct(data) {
@@ -102,9 +124,17 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());
-      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data));
-      allow delete: if isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if (isAdmin() && (resource.data.email != "andreas.l.melin@gmail.com" || request.resource.data.role == 'admin')) || 
+                       (isOwner(userId) && request.resource.data.role == resource.data.role && isValidUser(request.resource.data));
+      allow delete: if isAdmin() && resource.data.email != "andreas.l.melin@gmail.com" && resource.data.email != "andreas.melin@inera.se";
+    }
+
+    match /invitations/{invitationId} {
+      allow read: if true;
+      allow create, delete: if isAdmin() && isValidInvitation(request.resource.data);
+      allow update: if (isAdmin() && isValidInvitation(request.resource.data)) || 
+                       (isAuthenticated() && request.resource.data.status == 'used');
     }
 
     match /trains/{trainId} {
@@ -133,27 +163,27 @@ service cloud.firestore {
 
     match /susSurveys/{surveyId} {
       allow read: if true;
-      allow create: if isAuthenticated() && isValidSusSurvey(request.resource.data);
-      allow update: if true; // Allow status updates when survey finishes or admins update
-      allow delete: if isAuthenticated();
+      allow create: if isEditor() && isValidSusSurvey(request.resource.data);
+      allow update: if true; // Allow status updates when survey finishes, responses arrive, or editors update
+      allow delete: if isEditor();
     }
 
     match /surveyRespondents/{respondentId} {
       allow read: if true;
-      allow create: if isAuthenticated() && isValidSurveyRespondent(request.resource.data);
+      allow create: if isEditor() && isValidSurveyRespondent(request.resource.data);
       allow update: if true; // Allow public respondents to mark used = true
-      allow delete: if isAuthenticated();
+      allow delete: if isEditor();
     }
 
     match /susResponses/{responseId} {
       allow read: if true;
       allow create: if true; // Allow public respondents to submit responses
-      allow update, delete: if isAuthenticated();
+      allow update, delete: if isEditor();
     }
 
     match /measurements/{measurementId} {
       allow read: if true;
-      allow create: if isAuthenticated() && isValidMeasurement(request.resource.data);
+      allow create: if isEditor() && isValidMeasurement(request.resource.data);
       allow update, delete: if isAdmin();
     }
 

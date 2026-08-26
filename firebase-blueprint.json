@@ -8,9 +8,28 @@
         "uid": { "type": "string" },
         "email": { "type": "string", "format": "email" },
         "displayName": { "type": "string" },
-        "role": { "type": "string", "enum": ["admin", "user"] }
+        "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
+        "isBlocked": { "type": "boolean" },
+        "mustChangePassword": { "type": "boolean" },
+        "inviteCode": { "type": "string" }
       },
       "required": ["uid", "email"]
+    },
+    "Invitation": {
+      "title": "Invitation",
+      "description": "Invitation code for user registration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
+        "status": { "type": "string", "enum": ["active", "used", "revoked"] },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["code", "email", "role", "status"]
     },
     "Train": {
       "title": "Train",
@@ -120,6 +139,10 @@
     "/users/{userId}": {
       "schema": { "$ref": "User" },
       "description": "User profiles"
+    },
+    "/invitations/{invitationId}": {
+      "schema": { "$ref": "Invitation" },
+      "description": "User invitations"
     },
     "/trains/{trainId}": {
       "schema": { "$ref": "Train" },

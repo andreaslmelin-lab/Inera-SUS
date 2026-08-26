@@ -3,24 +3,24 @@ import { doc, getDoc, collection, addDoc, updateDoc, getDocs, query, where, serv
 import { db } from '../firebase';
 import { SusSurvey, SurveyRespondent, Product, SurveyTheme } from '../types';
 import { 
-  ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Mail, Send, ExternalLink, 
-  HelpCircle, ShieldCheck, Sparkles, Building2, Stethoscope, Users as UsersIcon, Heart,
-  Clock
+  CheckCircle2, AlertCircle, Mail, ExternalLink, 
+  Clock, Loader2
 } from 'lucide-react';
 import { triggerSusMetricsSync } from '../services/syncService';
-import { getSurveyTheme, SURVEY_THEMES } from '../utils/surveyThemes';
+import { getSurveyTheme } from '../utils/surveyThemes';
+import ineraLogo from '../Images/Inera logo 1.0 färg.svg';
 
 const SUS_QUESTIONS = [
-  "Jag tror att jag skulle vilja använda det här systemet ofta.",
-  "Jag upplevde systemet som onödigt komplext.",
-  "Jag tyckte att systemet var lätt att använda.",
-  "Jag tror att jag skulle behöva hjälp av en teknisk person för att kunna använda systemet.",
-  "Jag tyckte att de olika funktionerna i systemet var väl integrerade.",
-  "Jag tyckte att det fanns för mycket inkonsekvens i systemet.",
-  "Jag kan föreställa mig att de flesta skulle lära sig att använda systemet mycket snabbt.",
-  "Jag upplevde systemet som mycket otympligt att använda.",
-  "Jag kände mig mycket säker när jag använde systemet.",
-  "Jag behövde lära mig många saker innan jag kunde komma igång med systemet."
+  "Jag tror att jag skulle vilja använda det här systemet ofta",
+  "Jag upplevde systemet som onödigt komplext",
+  "Jag tyckte att systemet var lätt att använda",
+  "Jag tror att jag skulle behöva hjälp av en teknisk person för att kunna använda systemet",
+  "Jag tyckte att de olika funktionerna i systemet var väl integrerade",
+  "Jag tyckte att det fanns för mycket inkonsekvens i systemet",
+  "Jag kan föreställa mig att de flesta skulle lära sig att använda systemet mycket snabbt",
+  "Jag upplevde systemet som mycket otympligt att använda",
+  "Jag kände mig mycket säker när jag använde systemet",
+  "Jag behövde lära mig många saker innan jag kunde komma igång med systemet"
 ];
 
 interface Props {
@@ -31,6 +31,27 @@ interface Props {
   previewProduct?: Product;
   onClosePreview?: () => void;
 }
+
+// 1177 SVG Logo Component (using exact official vector paths)
+const Logo1177 = ({ color = '#C12143', className = 'h-7 sm:h-8 w-auto' }: { color?: string; className?: string }) => (
+  <svg 
+    viewBox="0 0 255 99" 
+    className={className}
+    style={{ fill: color }}
+    aria-label="1177"
+  >
+    <path d="M14.7,87.5c0,6.4,5.2,11.5,11.6,11.5s11.6-5.2,11.6-11.5v-76C37.9,5.2,32.7,0,26.3,0H12.6C5.6,0,0,5.7,0,12.5 C0,19.5,5.7,25,12.7,25h2.1L14.7,87.5L14.7,87.5z"/>
+    <path d="M69.1,25.2v62.3c0,6.4,5.2,11.5,11.6,11.5s11.6-5.2,11.6-11.5v-76C92.3,5.2,87.1,0,80.7,0H67 c-7,0-12.6,5.7-12.6,12.5c0,7,5.7,12.5,12.7,12.5L69.1,25.2L69.1,25.2z"/>
+    <g>
+      <path d="M198.1,25.2h18.6L226.9,0h-28.8c-7,0-12.6,5.7-12.6,12.5C185.4,19.5,191.1,25.2,198.1,25.2z"/>
+      <path d="M247.7,0.9c-6-2.4-12.7,0.5-15.1,6.5L202,83.1c-2.4,6,0.5,12.6,6.5,15s12.7-0.5,15.1-6.5l30.6-75.8 C256.5,10,253.6,3.2,247.7,0.9z"/>
+    </g>
+    <g>
+      <path d="M118.2,25.2h18.6L147,0h-28.8c-7,0-12.6,5.7-12.6,12.5C105.5,19.5,111.2,25.2,118.2,25.2z"/>
+      <path d="M167.8,0.9c-6-2.4-12.7,0.5-15.1,6.5l-30.6,75.7c-2.4,6,0.5,12.6,6.5,15c6,2.4,12.7-0.5,15.1-6.5l30.6-75.8 C176.6,10,173.7,3.2,167.8,0.9z"/>
+    </g>
+  </svg>
+);
 
 export default function PublicSurveyView({ 
   surveyId, 
@@ -58,7 +79,7 @@ export default function PublicSurveyView({
   const [createdResponseId, setCreatedResponseId] = useState<string | null>(null);
 
   // Active theme configuration
-  const activeThemeKey = previewTheme || survey?.theme || '1177_invanare';
+  const activeThemeKey = previewTheme || survey?.theme || 'inera_b2b';
   const themeMeta = getSurveyTheme(activeThemeKey);
 
   // Helper to determine the actual product name cleanly
@@ -85,7 +106,7 @@ export default function PublicSurveyView({
       }
       return survey.name;
     }
-    return 'Tjänsten';
+    return 'Inera Design System (IDS)';
   };
 
   useEffect(() => {
@@ -155,7 +176,7 @@ export default function PublicSurveyView({
         }
       }
 
-      // 5. Hämta produktnamn (med robust matchning)
+      // 5. Hämta produktnamn
       if (surveyData.productId) {
         const prodDoc = await getDoc(doc(db, 'products', surveyData.productId));
         if (prodDoc.exists()) {
@@ -214,14 +235,14 @@ export default function PublicSurveyView({
     updated[questionIdx] = value;
     setAnswers(updated);
 
-    // Automatisk navigering till nästa fråga efter val
+    // Automatisk framsteg till nästa fråga efter val
     setTimeout(() => {
       if (step < 10) {
         setStep(step + 1);
       } else {
-        setStep(11); // Fritext / Sammanfattning
+        setStep(11); // Fritext & Granskning
       }
-    }, 220);
+    }, 200);
   };
 
   const calculateSusScore = (scores: number[]) => {
@@ -324,121 +345,65 @@ export default function PublicSurveyView({
     }
   };
 
-  // Header branding bar purely driven by theme configuration (ready for sketches/assets)
+  // Header branding bar (exact match to sketches)
   const renderHeader = () => {
     const pName = getProductName();
     const h = themeMeta.header;
 
     return (
-      <header 
-        className="py-3.5 px-4 sm:px-6 shadow-xs border-b transition-colors"
-        style={{ 
-          backgroundColor: h.bg, 
-          color: h.text, 
-          borderColor: h.borderBottom 
-        }}
-      >
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
-          {/* Logo & Brand text */}
-          <div className="flex items-center gap-3">
-            {h.customLogoUrl ? (
-              <img 
-                src={h.customLogoUrl} 
-                alt={h.customLogoAlt || h.title} 
-                className="h-8 w-auto object-contain"
-                referrerPolicy="no-referrer"
-              />
-            ) : h.logoType === '1177_invanare' ? (
-              <div className="flex items-center tracking-tight">
-                <span className="font-extrabold text-2xl tracking-tighter" style={{ color: h.text }}>{h.title}</span>
-                {h.dotColor && <span className="w-2.5 h-2.5 rounded-full inline-block ml-1 -translate-y-1" style={{ backgroundColor: h.dotColor }}></span>}
-              </div>
-            ) : h.logoType === '1177_vardpersonal' ? (
-              <div className="flex items-center tracking-tight">
-                <span className="font-extrabold text-2xl tracking-tighter" style={{ color: h.text }}>{h.title}</span>
-                {h.dotColor && <span className="w-2.5 h-2.5 rounded-full inline-block ml-1 -translate-y-1" style={{ backgroundColor: h.dotColor }}></span>}
-              </div>
-            ) : h.logoType === 'inera_b2b' ? (
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded bg-white/10 flex items-center justify-center font-bold text-white tracking-tighter text-sm border border-white/20">
-                  IN
-                </div>
-                <div>
-                  <span className="font-bold text-lg text-white tracking-wide block leading-none">{h.title}</span>
-                  {h.subtitle && <span className="text-[10px] text-white/80 uppercase tracking-widest block mt-0.5">{h.subtitle}</span>}
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm shadow-xs" style={{ backgroundColor: h.text }}>
-                  <Sparkles size={16} />
-                </div>
-                <div>
-                  <span className="font-bold text-base sm:text-lg block leading-none" style={{ color: h.text }}>{h.title}</span>
-                  {h.subtitle && <span className="text-[10px] font-semibold block mt-0.5 opacity-80" style={{ color: h.text }}>{h.subtitle}</span>}
-                </div>
-              </div>
-            )}
+      <header className="bg-white border-b border-[#e5e1da] px-4 sm:px-12 py-3.5 flex items-center justify-between">
+        {/* Left Side: Brand Logo + Separator + "Namn" */}
+        <div className="flex items-center gap-3">
+          {h.logoType === 'inera' ? (
+            <img 
+              src={ineraLogo} 
+              alt="Inera" 
+              className="h-7 sm:h-8 w-auto object-contain"
+              referrerPolicy="no-referrer"
+            />
+          ) : h.logoType === '1177_vardpersonal' ? (
+            <Logo1177 color="#28588f" className="h-7 sm:h-8 w-auto" />
+          ) : (
+            <Logo1177 color="#C12143" className="h-7 sm:h-8 w-auto" />
+          )}
 
-            {/* Subtitle / Department tag if applicable */}
-            {h.subtitle && (h.logoType === '1177_invanare' || h.logoType === '1177_vardpersonal') && (
-              <>
-                <div className="h-5 w-px opacity-25 mx-1 hidden sm:block" style={{ backgroundColor: h.text }}></div>
-                <span className="text-xs sm:text-sm font-semibold tracking-wide hidden sm:inline-flex items-center gap-1.5" style={{ color: h.text }}>
-                  {h.iconName === 'stethoscope' && <Stethoscope size={16} className="text-[#00c0d8]" />}
-                  {h.subtitle}
-                </span>
-              </>
-            )}
-          </div>
+          {/* Vertical divider */}
+          <div className="h-6 w-px bg-[#cfd7dd] mx-1"></div>
 
-          {/* Product Identification Badge (Never theme badge) */}
-          <div className="flex items-center gap-2 max-w-[65%] justify-end">
-            <span className="hidden sm:inline text-xs font-medium opacity-80" style={{ color: h.text }}>Utvärdering av</span>
-            <span 
-              className="px-3 py-1 rounded-full text-xs sm:text-sm font-bold border truncate shadow-2xs transition-colors"
-              style={{ 
-                backgroundColor: h.productBadgeBg, 
-                color: h.productBadgeText, 
-                borderColor: h.productBadgeBorder 
-              }}
-            >
-              {pName}
-            </span>
+          {/* "Namn" title in specified color */}
+          <span 
+            className="text-lg sm:text-xl font-bold font-sans tracking-tight"
+            style={{ color: h.nameColor }}
+          >
+            {h.nameText || 'Namn'}
+          </span>
+        </div>
+
+        {/* Right Side: "Utvärdering av: [ Produktnamn ]" */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs sm:text-sm text-neutral-700 hidden sm:inline font-normal">
+            Utvärdering av:
+          </span>
+          <div 
+            className="border px-3 py-1 text-xs sm:text-sm font-normal bg-white"
+            style={{ 
+              borderColor: h.productTagBorder, 
+              color: h.productTagText 
+            }}
+          >
+            {pName}
           </div>
         </div>
       </header>
     );
   };
 
-  // Data-driven footer driven by theme configuration (ready for sketches/assets)
+  // Footer (exact match to sketches)
   const renderFooter = () => {
     const f = themeMeta.footer;
     return (
-      <footer 
-        className="py-4 px-6 text-center text-xs border-t transition-colors"
-        style={{ 
-          backgroundColor: f.bg, 
-          borderColor: f.borderTop, 
-          color: f.text 
-        }}
-      >
+      <footer className="py-6 text-center text-sm" style={{ color: f.textColor }}>
         <p>{f.mainText}</p>
-        {f.links && f.links.length > 0 && (
-          <div className="flex items-center justify-center gap-4 mt-2">
-            {f.links.map((link) => (
-              <a 
-                key={link.url} 
-                href={link.url} 
-                target="_blank" 
-                rel="noreferrer" 
-                className="hover:underline opacity-80 hover:opacity-100"
-              >
-                {link.label}
-              </a>
-            ))}
-          </div>
-        )}
       </footer>
     );
   };
@@ -450,12 +415,12 @@ export default function PublicSurveyView({
       <div className="sticky top-0 z-50 bg-slate-900 text-white px-4 py-2 text-xs flex items-center justify-between shadow-md">
         <div className="flex items-center gap-2 font-medium">
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-          <span>Förhandsgranskningsläge: Grafisk form <strong>"{themeMeta.name}"</strong> ({themeMeta.sourceLabel})</span>
+          <span>Förhandsgranskningsläge: Grafisk form <strong>"{themeMeta.name}"</strong></span>
         </div>
         {onClosePreview && (
           <button 
             onClick={onClosePreview}
-            className="px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs font-bold transition-colors"
+            className="px-2.5 py-1 bg-white/20 hover:bg-white/30 rounded text-xs font-bold transition-colors cursor-pointer"
           >
             Stäng förhandsgranskning
           </button>
@@ -467,47 +432,36 @@ export default function PublicSurveyView({
   if (loading) {
     return (
       <div 
-        className="min-h-screen flex flex-col items-center justify-center p-4 transition-colors"
-        style={{ backgroundColor: themeMeta.colors.bg, color: themeMeta.colors.text }}
+        className="min-h-screen flex flex-col items-center justify-center p-4"
+        style={{ backgroundColor: themeMeta.colors.bg }}
       >
-        <div className="animate-pulse flex flex-col items-center gap-3">
-          <div 
-            className="w-12 h-12 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: themeMeta.colors.primaryLight, color: themeMeta.colors.primary }}
-          >
-            <HelpCircle size={24} className="animate-spin" />
-          </div>
-          <p className="font-medium" style={{ color: themeMeta.colors.textMuted }}>Laddar enkät...</p>
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 size={32} className="animate-spin text-neutral-600" />
+          <p className="text-sm font-medium text-neutral-600">Laddar formulär...</p>
         </div>
       </div>
     );
   }
 
-  // Sida för inaktiv / avslutad enkät
+  // Inaktiv / Avslutad enkät
   if (statusState === 'closed') {
     return (
       <div 
         className="min-h-screen flex flex-col justify-between"
-        style={{ backgroundColor: themeMeta.colors.bg, color: themeMeta.colors.text }}
+        style={{ backgroundColor: themeMeta.colors.bg }}
       >
         <div>
           {renderPreviewBanner()}
           {renderHeader()}
-          <main className="max-w-xl mx-auto px-4 py-8">
-            <div 
-              className={`p-8 shadow-md text-center border ${themeMeta.ui.borderRadius}`}
-              style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border }}
-            >
-              <div 
-                className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
-                style={{ backgroundColor: themeMeta.colors.primaryLight, color: themeMeta.colors.textMuted }}
-              >
+          <main className="max-w-2xl mx-auto px-4 py-12">
+            <div className="bg-white p-8 sm:p-10 rounded-2xl border border-[#e5e1da] shadow-md text-center">
+              <div className="w-16 h-16 rounded-full bg-neutral-100 text-neutral-600 mx-auto mb-4 flex items-center justify-center">
                 <AlertCircle size={32} />
               </div>
-              <h1 className="text-2xl font-bold mb-3" style={{ color: themeMeta.colors.text }}>
+              <h1 className="text-2xl font-bold mb-3" style={{ color: themeMeta.colors.heading }}>
                 Mätningen är avslutad
               </h1>
-              <p className="leading-relaxed mb-6" style={{ color: themeMeta.colors.textMuted }}>
+              <p className="text-neutral-700 leading-relaxed">
                 Den här mätningen är nu avslutad. Tack för ditt intresse.
               </p>
             </div>
@@ -518,48 +472,38 @@ export default function PublicSurveyView({
     );
   }
 
-  // Sida för redan använd unik länk
+  // Redan använd unik länk
   if (statusState === 'already_used' && survey) {
     const pName = getProductName();
     const mailtoSubject = encodeURIComponent(`SUS-mätning ${survey?.name || pName}`);
     const mailtoUrl = `mailto:ux@inera.se?subject=${mailtoSubject}`;
 
-    const defaultAlreadyUsedText = `Denna länk har redan använts för att registrera en utvärdering för [ProductName] och kan inte användas fler gånger.`;
-    const rawAlreadyUsedText = survey.alreadyAnsweredText || defaultAlreadyUsedText;
-    const displayAlreadyUsedText = rawAlreadyUsedText.replaceAll('[ProductName]', pName);
-
     return (
       <div 
         className="min-h-screen flex flex-col justify-between"
-        style={{ backgroundColor: themeMeta.colors.bg, color: themeMeta.colors.text }}
+        style={{ backgroundColor: themeMeta.colors.bg }}
       >
         <div>
           {renderPreviewBanner()}
           {renderHeader()}
-          <main className="max-w-2xl mx-auto px-4 pb-12 pt-4">
-            <div 
-              className={`p-8 shadow-lg border ${themeMeta.ui.borderRadius}`}
-              style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border }}
-            >
-              <h1 className="text-3xl font-bold mb-4" style={{ color: themeMeta.colors.text }}>
+          <main className="max-w-2xl mx-auto px-4 py-12">
+            <div className="bg-white p-8 sm:p-10 rounded-2xl border border-[#e5e1da] shadow-md">
+              <h1 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: themeMeta.colors.heading }}>
                 Utvärdering av {pName}
               </h1>
 
-              <div className="leading-relaxed space-y-4 mb-8 text-base" style={{ color: themeMeta.colors.textMuted }}>
-                <p>{displayAlreadyUsedText}</p>
+              <div className="leading-relaxed space-y-4 mb-8 text-neutral-700 text-base">
+                <p>Denna länk har redan använts för att registrera en utvärdering för {pName} och kan inte användas fler gånger.</p>
               </div>
 
-              <div 
-                className="p-4 rounded-xl border flex items-center justify-between text-sm"
-                style={{ backgroundColor: themeMeta.colors.primaryLight, borderColor: themeMeta.colors.border }}
-              >
-                <span style={{ color: themeMeta.colors.textMuted }}>Frågor eller funderingar?</span>
+              <div className="rounded-xl border border-neutral-300 p-4 sm:p-5 flex items-center justify-between bg-white text-sm sm:text-base">
+                <span className="text-neutral-700">Frågor eller funderingar</span>
                 <a 
                   href={mailtoUrl}
-                  className="inline-flex items-center gap-2 font-bold hover:underline"
-                  style={{ color: themeMeta.colors.primary }}
+                  className="inline-flex items-center gap-2 font-normal underline hover:opacity-80"
+                  style={{ color: themeMeta.colors.link }}
                 >
-                  <Mail size={16} /> ux@inera.se
+                  <Mail size={18} /> ux@inera.se
                 </a>
               </div>
             </div>
@@ -570,28 +514,25 @@ export default function PublicSurveyView({
     );
   }
 
-  // Sida för ogiltig länk
+  // Ogiltig enkätlänk
   if (statusState === 'invalid' || (!survey && !isPreview)) {
     return (
       <div 
         className="min-h-screen flex flex-col justify-between"
-        style={{ backgroundColor: themeMeta.colors.bg, color: themeMeta.colors.text }}
+        style={{ backgroundColor: themeMeta.colors.bg }}
       >
         <div>
           {renderPreviewBanner()}
           {renderHeader()}
-          <main className="max-w-xl mx-auto px-4 py-8">
-            <div 
-              className={`p-8 shadow-md text-center border ${themeMeta.ui.borderRadius}`}
-              style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border }}
-            >
+          <main className="max-w-2xl mx-auto px-4 py-12">
+            <div className="bg-white p-8 sm:p-10 rounded-2xl border border-[#e5e1da] shadow-md text-center">
               <div className="w-16 h-16 rounded-full bg-red-50 text-red-600 mx-auto mb-4 flex items-center justify-center">
                 <AlertCircle size={32} />
               </div>
-              <h1 className="text-2xl font-bold mb-3" style={{ color: themeMeta.colors.text }}>
+              <h1 className="text-2xl font-bold mb-3 text-neutral-900">
                 Ogiltig enkätlänk
               </h1>
-              <p className="leading-relaxed mb-6" style={{ color: themeMeta.colors.textMuted }}>
+              <p className="text-neutral-700 leading-relaxed">
                 Länken du använde verkar vara ogiltig eller så har enkäten tagits bort. Kontrollera adressen och försök igen.
               </p>
             </div>
@@ -611,7 +552,7 @@ export default function PublicSurveyView({
     ? survey.introText.replaceAll('[Produkten]', productName)
     : defaultIntro;
 
-  const defaultFreeLabel = `Har du något mer du vill berätta om din upplevelse av ${productName}?`;
+  const defaultFreeLabel = `Har du något mer du vill berätta om din upplevelse av ${productName} (IDS)`;
   const displayFreeLabel = survey?.freeTextLabel
     ? survey.freeTextLabel.replaceAll('[Produkten]', productName)
     : defaultFreeLabel;
@@ -621,118 +562,108 @@ export default function PublicSurveyView({
 
   return (
     <div 
-      className="min-h-screen flex flex-col justify-between transition-colors duration-200"
+      className="min-h-screen flex flex-col justify-between font-sans"
       style={{ backgroundColor: themeMeta.colors.bg, color: themeMeta.colors.text }}
     >
       <div>
         {renderPreviewBanner()}
         {renderHeader()}
 
-        <main className="max-w-2xl mx-auto px-4 pb-12 pt-2">
-          {/* Steg 0: Inledning */}
+        <main className="max-w-2xl mx-auto px-4 py-6 sm:py-8">
+          {/* Steg 0: Inledning / Startskärm */}
           {step === 0 && (
-            <div 
-              className={`p-6 sm:p-10 shadow-lg border ${themeMeta.ui.borderRadius} transition-all`}
-              style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border }}
-            >
-              <div 
-                className="inline-flex items-center gap-2 mb-4 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium border"
-                style={{ 
-                  backgroundColor: themeMeta.colors.primaryLight, 
-                  borderColor: themeMeta.colors.border,
-                  color: themeMeta.colors.primary 
-                }}
-              >
-                <Clock size={16} className="shrink-0" />
-                <span>Ungefärlig tid att fylla i enkäten, 1-2 minuter.</span>
+            <div className="bg-white rounded-2xl border border-[#e5e1da] shadow-md p-6 sm:p-10">
+              {/* Approximate time badge */}
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-sm border border-neutral-400 bg-[#d8dde3]/60 text-neutral-800 text-xs sm:text-sm font-normal mb-6">
+                <Clock size={16} className="text-neutral-700 shrink-0" />
+                <span>Ungefärlig tid att fylla i enkäten, 1-2 minuter</span>
               </div>
 
-              <h1 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: themeMeta.colors.text }}>
+              {/* Main Heading */}
+              <h1 
+                className="text-2xl sm:text-[28px] font-bold mb-4 leading-tight font-sans"
+                style={{ color: themeMeta.colors.heading }}
+              >
                 Utvärdering av {productName}
               </h1>
 
-              <div className="leading-relaxed space-y-4 mb-8 text-base" style={{ color: themeMeta.colors.textMuted }}>
+              {/* Ingress / Description */}
+              <div className="text-base text-neutral-700 leading-relaxed mb-8">
                 <p>{displayIntro}</p>
               </div>
 
-              <div 
-                className="p-4 rounded-xl border mb-8 flex items-center justify-between text-sm"
-                style={{ backgroundColor: themeMeta.colors.primaryLight, borderColor: themeMeta.colors.border }}
-              >
-                <span style={{ color: themeMeta.colors.textMuted }}>Frågor eller funderingar?</span>
+              {/* Contact Questions Box */}
+              <div className="rounded-xl border border-neutral-300 p-4 sm:p-5 flex items-center justify-between mb-8 bg-white text-sm sm:text-base">
+                <span className="text-neutral-700">Frågor eller funderingar</span>
                 <a 
                   href={mailtoUrl}
-                  className="inline-flex items-center gap-2 font-bold hover:underline"
-                  style={{ color: themeMeta.colors.primary }}
+                  className="inline-flex items-center gap-2 font-normal underline hover:opacity-80 transition-opacity"
+                  style={{ color: themeMeta.colors.link }}
                 >
-                  <Mail size={16} /> ux@inera.se
+                  <Mail size={18} /> ux@inera.se
                 </a>
               </div>
 
+              {/* Start Button (Centered, Uppercase, Theme Button Color) */}
               <button 
+                type="button"
                 onClick={() => setStep(1)}
-                className="w-full py-4 text-base font-bold text-white shadow-md flex items-center justify-center gap-2 transition-transform active:scale-98 rounded-xl cursor-pointer hover:opacity-95"
-                style={{ backgroundColor: themeMeta.colors.primary }}
+                className="mx-auto block py-3 px-8 text-sm sm:text-base font-bold text-white uppercase tracking-wider rounded-lg shadow-sm hover:opacity-95 active:scale-98 transition-all cursor-pointer"
+                style={{ backgroundColor: themeMeta.colors.button }}
               >
-                Starta enkäten <ChevronRight size={20} />
+                STARTA ENKÄTEN
               </button>
             </div>
           )}
 
           {/* Steg 1-10: SUS Frågor */}
           {step >= 1 && step <= 10 && (
-            <div 
-              className={`p-6 sm:p-8 shadow-lg border ${themeMeta.ui.borderRadius} transition-all`}
-              style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border }}
-            >
-              {/* Product Context & Step Counter */}
-              <div className="flex items-center justify-between gap-2 pb-3.5 mb-5 border-b" style={{ borderColor: themeMeta.colors.border }}>
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="text-xs font-semibold hidden sm:inline shrink-0" style={{ color: themeMeta.colors.textMuted }}>
+            <div className="bg-white rounded-2xl border border-[#e5e1da] shadow-md p-6 sm:p-10">
+              {/* Top Row: Product context & Question count */}
+              <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-neutral-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs sm:text-sm text-neutral-700 hidden sm:inline font-normal">
                     Utvärdering av:
                   </span>
-                  <span 
-                    className="text-xs font-bold px-2.5 py-0.5 rounded-full truncate"
-                    style={{ backgroundColor: themeMeta.colors.primaryLight, color: themeMeta.colors.primary }}
+                  <div 
+                    className="border px-2.5 py-0.5 text-xs sm:text-sm font-normal bg-white"
+                    style={{ 
+                      borderColor: themeMeta.header.productTagBorder, 
+                      color: themeMeta.header.productTagText 
+                    }}
                   >
                     {productName}
-                  </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1 text-xs font-bold shrink-0" style={{ color: themeMeta.colors.textMuted }}>
-                  <span>Fråga {step} av 10</span>
-                  <span className="opacity-70 font-normal">({Math.round((step / 10) * 100)}%)</span>
+                <div className="text-xs sm:text-sm font-bold text-neutral-700">
+                  Fråga {step} av 10 ({step * 10}%)
                 </div>
               </div>
 
-              {/* Progress bar */}
-              <div className="mb-6">
+              {/* Progress Bar (Blue fill inside border container) */}
+              <div className="w-full h-2.5 sm:h-3 rounded-full border border-neutral-400 bg-white overflow-hidden mb-6 p-0.5">
                 <div 
-                  className="w-full h-2 rounded-full overflow-hidden"
-                  style={{ backgroundColor: themeMeta.colors.primaryLight }}
-                >
-                  <div 
-                    className="h-full transition-all duration-300 rounded-full"
-                    style={{ 
-                      width: `${(step / 10) * 100}%`,
-                      backgroundColor: themeMeta.colors.primary 
-                    }}
-                  ></div>
-                </div>
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ 
+                    width: `${step * 10}%`,
+                    backgroundColor: themeMeta.colors.progressBar 
+                  }}
+                />
               </div>
 
               {/* Question Text */}
-              <h2 className="text-xl sm:text-2xl font-bold mb-8 min-h-[4rem] flex items-center" style={{ color: themeMeta.colors.text }}>
+              <h2 className="text-2xl sm:text-[26px] font-bold text-neutral-900 leading-snug mb-8 min-h-[4.5rem] flex items-center font-sans">
                 {SUS_QUESTIONS[step - 1]}
               </h2>
 
-              {/* 5-point Likert Scale styled per graphical form */}
-              <div className="space-y-3 mb-8">
-                <div className="flex justify-between text-xs font-bold px-1 mb-1" style={{ color: themeMeta.colors.textMuted }}>
-                  <span>1 = Instämmer inte alls</span>
-                  <span>5 = Instämmer helt</span>
+              {/* Likert Scale 1-5 */}
+              <div className="mb-8">
+                <div className="flex justify-between text-xs sm:text-sm text-neutral-700 mb-2 px-1">
+                  <span>1 = instämmer inte alls</span>
+                  <span>5 = instämmer helt</span>
                 </div>
 
-                <div className="grid grid-cols-5 gap-2 sm:gap-3">
+                <div className="grid grid-cols-5 gap-3 sm:gap-4">
                   {[1, 2, 3, 4, 5].map((val) => {
                     const isSelected = answers[step - 1] === val;
                     return (
@@ -740,22 +671,14 @@ export default function PublicSurveyView({
                         key={val}
                         type="button"
                         onClick={() => handleSelectOption(step - 1, val)}
-                        className={`py-4 sm:py-5 border-2 font-bold text-lg sm:text-xl transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                          themeMeta.ui.scaleStyle === 'fresh-circles' 
-                            ? 'rounded-full aspect-square' 
-                            : themeMeta.ui.scaleStyle === 'structured-tiles'
-                            ? 'rounded-lg'
-                            : 'rounded-xl'
+                        className={`h-20 sm:h-24 rounded-xl border flex items-center justify-center text-3xl sm:text-4xl font-bold cursor-pointer transition-all ${
+                          isSelected 
+                            ? 'text-white shadow-sm border-transparent' 
+                            : 'border-neutral-300 bg-white text-neutral-800 hover:border-neutral-500 hover:bg-neutral-50'
                         }`}
-                        style={{
-                          borderColor: isSelected ? themeMeta.colors.primary : themeMeta.colors.border,
-                          backgroundColor: isSelected ? themeMeta.colors.primary : themeMeta.colors.cardBg,
-                          color: isSelected ? '#ffffff' : themeMeta.colors.text,
-                          boxShadow: isSelected ? `0 4px 12px ${themeMeta.colors.primary}40` : undefined,
-                          transform: isSelected ? 'scale(1.04)' : 'scale(1)'
-                        }}
+                        style={isSelected ? { backgroundColor: themeMeta.colors.button, borderColor: themeMeta.colors.button } : {}}
                       >
-                        <span>{val}</span>
+                        {val}
                       </button>
                     );
                   })}
@@ -763,28 +686,25 @@ export default function PublicSurveyView({
               </div>
 
               {/* Navigation Controls */}
-              <div 
-                className="flex items-center justify-between pt-4 border-t"
-                style={{ borderColor: themeMeta.colors.border }}
-              >
+              <div className="flex items-center justify-between pt-5 border-t border-neutral-200">
                 <button
                   type="button"
                   onClick={() => setStep(step - 1)}
                   disabled={step === 1}
-                  className="px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 disabled:opacity-40 hover:bg-black/5 transition-colors cursor-pointer"
-                  style={{ color: themeMeta.colors.textMuted }}
+                  className="font-bold text-xs sm:text-sm uppercase tracking-wider underline hover:opacity-80 transition-colors disabled:opacity-0 cursor-pointer"
+                  style={{ color: themeMeta.colors.link }}
                 >
-                  <ChevronLeft size={16} /> Föregående
+                  FÖREGÅENDE
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setStep(step + 1)}
                   disabled={answers[step - 1] === 0}
-                  className="px-5 py-2.5 rounded-lg text-white font-bold text-sm flex items-center gap-1.5 disabled:opacity-40 shadow-xs hover:opacity-95 transition-all cursor-pointer"
-                  style={{ backgroundColor: themeMeta.colors.primary }}
+                  className="py-2.5 px-6 rounded-lg text-white font-bold text-xs sm:text-sm uppercase tracking-wider shadow-sm hover:opacity-95 transition-all disabled:opacity-40 cursor-pointer"
+                  style={{ backgroundColor: themeMeta.colors.button }}
                 >
-                  Nästa <ChevronRight size={16} />
+                  NÄSTA
                 </button>
               </div>
             </div>
@@ -792,102 +712,106 @@ export default function PublicSurveyView({
 
           {/* Steg 11: Fritextfråga & Granskning */}
           {step === 11 && (
-            <div 
-              className={`p-6 sm:p-8 shadow-lg border ${themeMeta.ui.borderRadius} transition-all`}
-              style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border }}
-            >
-              {/* Product Context Banner */}
-              <div className="flex items-center gap-2 pb-3 mb-4 border-b" style={{ borderColor: themeMeta.colors.border }}>
-                <span className="text-xs font-semibold hidden sm:inline shrink-0" style={{ color: themeMeta.colors.textMuted }}>
-                  Utvärdering av:
-                </span>
-                <span 
-                  className="text-xs font-bold px-2.5 py-0.5 rounded-full truncate"
-                  style={{ backgroundColor: themeMeta.colors.primaryLight, color: themeMeta.colors.primary }}
-                >
-                  {productName}
-                </span>
-                <span className="text-xs ml-auto" style={{ color: themeMeta.colors.textMuted }}>• Avslutande kommentar</span>
+            <div className="bg-white rounded-2xl border border-[#e5e1da] shadow-md p-6 sm:p-10">
+              {/* Top Row */}
+              <div className="flex items-center justify-between pb-3.5 mb-4 border-b border-neutral-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs sm:text-sm text-neutral-700 hidden sm:inline font-normal">
+                    Utvärdering av:
+                  </span>
+                  <div 
+                    className="border px-2.5 py-0.5 text-xs sm:text-sm font-normal bg-white"
+                    style={{ 
+                      borderColor: themeMeta.header.productTagBorder, 
+                      color: themeMeta.header.productTagText 
+                    }}
+                  >
+                    {productName}
+                  </div>
+                </div>
+                <div className="text-xs sm:text-sm font-bold text-neutral-700">
+                  Avslutande kommentar
+                </div>
               </div>
 
-              <h2 className="text-2xl font-bold mb-2" style={{ color: themeMeta.colors.text }}>
-                Frivillig kommentar & Inskick
+              {/* Heading in theme color */}
+              <h2 
+                className="text-2xl sm:text-[26px] font-bold mb-2 font-sans"
+                style={{ color: themeMeta.colors.heading }}
+              >
+                Frivillig kommentar & inskick
               </h2>
-              <p className="text-sm mb-6" style={{ color: themeMeta.colors.textMuted }}>
+              <p className="text-sm sm:text-base text-neutral-700 mb-6 leading-relaxed">
                 Du har besvarat alla 10 påståenden för <strong>{productName}</strong>. Du kan lämna en valfri kommentar nedan innan du skickar in.
               </p>
 
-              <div className="mb-6">
-                <label className="block text-sm font-bold mb-2" style={{ color: themeMeta.colors.text }}>
+              {/* Free text input */}
+              <div className="mb-2">
+                <label className="block text-sm sm:text-base text-neutral-800 mb-2">
                   {displayFreeLabel}
                 </label>
                 <textarea
-                  className="w-full h-32 p-3 border rounded-xl text-sm focus:outline-none focus:ring-2"
-                  style={{ 
-                    borderColor: themeMeta.colors.border,
-                    backgroundColor: themeMeta.colors.cardBg,
-                    color: themeMeta.colors.text
-                  }}
-                  placeholder="Skriv dina tankar här (valfritt)..."
+                  maxLength={500}
+                  className="w-full h-32 p-3.5 border border-neutral-400 rounded-lg text-sm bg-white text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-400"
+                  placeholder=""
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                 />
+                <div className="text-right text-xs italic text-neutral-500 mt-1 mb-6">
+                  {comment.length} av 500 tecken
+                </div>
               </div>
 
-              {/* Visual review summary */}
-              <div 
-                className="p-4 rounded-xl border mb-8"
-                style={{ backgroundColor: themeMeta.colors.primaryLight, borderColor: themeMeta.colors.border }}
-              >
+              {/* Review answers box */}
+              <div className="rounded-xl border border-neutral-300 p-4 sm:p-5 mb-8 bg-white">
                 <div className="flex items-center justify-between mb-3">
-                  <span className="font-bold text-xs uppercase" style={{ color: themeMeta.colors.textMuted }}>
+                  <span className="font-bold text-xs sm:text-sm text-neutral-800">
                     Dina svar (10 av 10 besvarade för {productName})
                   </span>
                   <button 
+                    type="button"
                     onClick={() => setStep(1)} 
-                    className="text-xs font-bold hover:underline cursor-pointer"
-                    style={{ color: themeMeta.colors.primary }}
+                    className="font-bold text-xs sm:text-sm uppercase tracking-wider underline hover:opacity-80 cursor-pointer"
+                    style={{ color: themeMeta.colors.link }}
                   >
-                    Ändra svar
+                    ÄNDRA SVAR
                   </button>
                 </div>
-                <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
+                <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5 sm:gap-2">
                   {answers.map((ans, idx) => (
                     <button 
                       key={idx} 
+                      type="button"
                       onClick={() => setStep(idx + 1)}
-                      className="p-2 text-center rounded bg-white border hover:shadow-xs transition-colors cursor-pointer"
-                      style={{ borderColor: themeMeta.colors.border }}
+                      className="h-14 rounded-lg border border-neutral-300 bg-white flex flex-col items-center justify-center p-1 cursor-pointer hover:border-neutral-500 transition-colors"
                       title={`Fråga ${idx + 1}: Val ${ans}`}
                     >
-                      <div className="text-[10px] font-bold" style={{ color: themeMeta.colors.textMuted }}>F{idx + 1}</div>
-                      <div className="text-sm font-bold" style={{ color: themeMeta.colors.primary }}>{ans}</div>
+                      <div className="text-[11px] font-bold text-neutral-600">F{idx + 1}</div>
+                      <div className="text-sm font-bold text-neutral-900">{ans}</div>
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div 
-                className="flex items-center justify-between pt-4 border-t"
-                style={{ borderColor: themeMeta.colors.border }}
-              >
+              {/* Bottom Buttons */}
+              <div className="flex items-center justify-between pt-5 border-t border-neutral-200">
                 <button
                   type="button"
                   onClick={() => setStep(10)}
-                  className="px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-1.5 hover:bg-black/5 transition-colors cursor-pointer"
-                  style={{ color: themeMeta.colors.textMuted }}
+                  className="font-bold text-xs sm:text-sm uppercase tracking-wider underline hover:opacity-80 transition-colors cursor-pointer"
+                  style={{ color: themeMeta.colors.link }}
                 >
-                  <ChevronLeft size={16} /> Tillbaka till frågorna
+                  TILLBAKA TILL FRÅGORNA
                 </button>
 
                 <button
                   type="button"
                   onClick={handleSubmitSurvey}
                   disabled={submitting}
-                  className="py-3 px-6 text-base font-bold text-white rounded-xl flex items-center gap-2 shadow-md hover:opacity-95 transition-all cursor-pointer"
-                  style={{ backgroundColor: themeMeta.colors.primary }}
+                  className="py-2.5 px-6 rounded-lg text-white font-bold text-xs sm:text-sm uppercase tracking-wider shadow-sm hover:opacity-95 transition-all cursor-pointer disabled:opacity-50"
+                  style={{ backgroundColor: themeMeta.colors.button }}
                 >
-                  <Send size={18} /> {submitting ? 'Skickar in...' : 'Skicka in enkät'}
+                  {submitting ? 'SKICKAR IN...' : 'SKICKA IN ENKÄT'}
                 </button>
               </div>
             </div>
@@ -895,51 +819,58 @@ export default function PublicSurveyView({
 
           {/* Steg 12: Tackskärm */}
           {step === 12 && (
-            <div 
-              className={`p-8 sm:p-10 shadow-xl border text-center ${themeMeta.ui.borderRadius}`}
-              style={{ backgroundColor: themeMeta.colors.cardBg, borderColor: themeMeta.colors.border }}
-            >
+            <div className="bg-white rounded-2xl border border-[#e5e1da] shadow-md p-8 sm:p-12 text-center">
+              {/* Green Success Check Circle */}
               <div 
-                className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center border"
+                className="w-14 h-14 rounded-full border-2 mx-auto mb-4 flex items-center justify-center"
                 style={{ 
-                  backgroundColor: themeMeta.colors.primaryLight, 
-                  color: themeMeta.colors.primary,
-                  borderColor: themeMeta.colors.primary
+                  borderColor: themeMeta.colors.successCheck,
+                  color: themeMeta.colors.successCheck
                 }}
               >
-                <CheckCircle2 size={36} />
+                <CheckCircle2 size={32} />
               </div>
 
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-4" style={{ backgroundColor: themeMeta.colors.primaryLight, color: themeMeta.colors.primary }}>
-                <span>{productName}</span>
+              {/* Product context box */}
+              <div 
+                className="inline-block border px-3 py-0.5 text-xs sm:text-sm font-normal mb-4 bg-white"
+                style={{ 
+                  borderColor: themeMeta.header.productTagBorder, 
+                  color: themeMeta.header.productTagText 
+                }}
+              >
+                {productName}
               </div>
 
-              <h2 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: themeMeta.colors.text }}>
-                Tack för ditt svar!
+              {/* Main Heading in theme color */}
+              <h2 
+                className="text-2xl sm:text-[28px] font-bold mb-3 text-center font-sans"
+                style={{ color: themeMeta.colors.heading }}
+              >
+                Frivillig kommentar & inskick
               </h2>
 
-              <p className="text-base leading-relaxed mb-8 max-w-lg mx-auto" style={{ color: themeMeta.colors.textMuted }}>
+              {/* Thank you text */}
+              <p className="text-base text-neutral-700 leading-relaxed mb-8 max-w-md mx-auto text-center">
                 {displayThankYou}
               </p>
 
-              {/* Option to proceed to external survey */}
+              {/* Option to proceed to external survey if enabled */}
               {survey?.externalSurveyEnabled && survey?.externalSurveyUrl && (
-                <div 
-                  className="p-6 rounded-2xl border max-w-md mx-auto mt-6"
-                  style={{ backgroundColor: themeMeta.colors.primaryLight, borderColor: themeMeta.colors.border }}
-                >
-                  <h3 className="font-bold mb-2 text-lg" style={{ color: themeMeta.colors.text }}>
+                <div className="max-w-md mx-auto mt-6 pt-6 border-t border-neutral-200 text-center">
+                  <h3 className="font-bold text-lg text-neutral-900 mb-2">
                     Vill du lämna ytterligare feedback?
                   </h3>
-                  <p className="text-xs mb-5" style={{ color: themeMeta.colors.textMuted }}>
-                    Vi genomför en fördjupad undersökning för att förbättra tjänsten ytterligare.
+                  <p className="text-sm text-neutral-600 mb-6">
+                    Vi genomför en fördjupad undersökning för att förbättra tjänsten ytterligare
                   </p>
                   <button
+                    type="button"
                     onClick={handleExternalClick}
-                    className="w-full py-3 text-base font-bold text-white rounded-xl flex items-center justify-center gap-2 shadow-md hover:opacity-95 transition-all cursor-pointer"
-                    style={{ backgroundColor: themeMeta.colors.primary }}
+                    className="py-3 px-6 rounded-lg text-white font-bold text-sm uppercase tracking-wider shadow-sm inline-flex items-center justify-center gap-2 hover:opacity-95 transition-all cursor-pointer"
+                    style={{ backgroundColor: themeMeta.colors.button }}
                   >
-                    {survey.externalSurveyBtnText || 'Fortsätt'} <ExternalLink size={18} />
+                    <ExternalLink size={18} /> {survey.externalSurveyBtnText || 'FORTSÄTT TILL INERA'}
                   </button>
                 </div>
               )}

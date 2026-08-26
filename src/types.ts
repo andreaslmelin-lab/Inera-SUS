@@ -1,8 +1,30 @@
 
+export type UserRole = 'admin' | 'editor' | 'viewer';
+
 export interface User {
   uid: string;
   email: string;
-  role: string;
+  role: UserRole;
+  displayName?: string;
+  isBlocked?: boolean;
+  mustChangePassword?: boolean;
+  lastLoggedIn?: any;
+  createdAt?: any;
+  invitedBy?: string;
+  inviteCode?: string;
+}
+
+export interface Invitation {
+  id: string;
+  code: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  status: 'active' | 'used' | 'revoked';
+  createdAt: string;
+  createdBy: string;
+  usedAt?: string;
+  usedBy?: string;
 }
 
 export interface Train {

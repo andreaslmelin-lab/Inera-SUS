@@ -26,7 +26,7 @@ const getBaseUrl = () => {
   return 'https://inera-sus.vercel.app';
 };
 
-export default function SusAdminView() {
+export default function SusAdminView({ canEdit = true, userRole = 'admin' }: { canEdit?: boolean; userRole?: string }) {
   const [surveys, setSurveys] = useState<SusSurvey[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [allResponsesCount, setAllResponsesCount] = useState<Record<string, number>>({});
@@ -756,27 +756,33 @@ export default function SusAdminView() {
           <button className="btn btn--tertiary flex items-center gap-2 text-sm" onClick={() => setMode('list')}>
             <ChevronLeft size={16} /> Tillbaka till omgångslistan
           </button>
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => openEditModal(selectedSurvey)}
-              className="btn btn--s btn--secondary flex items-center gap-1.5"
-            >
-              <Edit3 size={15} /> Redigera omgång
-            </button>
-            <button 
-              onClick={() => handleToggleStatus(selectedSurvey)}
-              className={`btn btn--s ${selectedSurvey.status === 'active' ? 'btn--secondary' : 'btn--primary'}`}
-            >
-              {selectedSurvey.status === 'active' ? 'Inaktivera omgång' : 'Aktivera omgång'}
-            </button>
-            <button 
-              onClick={() => handleDeleteSurvey(selectedSurvey.id)}
-              className="p-2 text-inera-error-40 hover:bg-inera-error-95 rounded-lg transition-colors"
-              title="Ta bort omgång"
-            >
-              <Trash2 size={18} />
-            </button>
-          </div>
+          {canEdit ? (
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => openEditModal(selectedSurvey)}
+                className="btn btn--s btn--secondary flex items-center gap-1.5"
+              >
+                <Edit3 size={15} /> Redigera omgång
+              </button>
+              <button 
+                onClick={() => handleToggleStatus(selectedSurvey)}
+                className={`btn btn--s ${selectedSurvey.status === 'active' ? 'btn--secondary' : 'btn--primary'}`}
+              >
+                {selectedSurvey.status === 'active' ? 'Inaktivera omgång' : 'Aktivera omgång'}
+              </button>
+              <button 
+                onClick={() => handleDeleteSurvey(selectedSurvey.id)}
+                className="p-2 text-inera-error-40 hover:bg-inera-error-95 rounded-lg transition-colors"
+                title="Ta bort omgång"
+              >
+                <Trash2 size={18} />
+              </button>
+            </div>
+          ) : (
+            <div className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-inera-secondary-95 text-inera-neutral-40 border border-inera-secondary-90">
+              Läsbehörig vy (Endast granskning)
+            </div>
+          )}
         </div>
 
         {/* Survey Header */}
@@ -1753,10 +1759,12 @@ export default function SusAdminView() {
           <h2 className="text-xl font-bold font-display text-inera-neutral-10">SUS-modul - Omgångar</h2>
           <p className="text-sm text-inera-neutral-40 mt-1">Skapa, distribuera och analysera standardiserade SUS-mätningar för Ineras produkter.</p>
         </div>
-        <button onClick={() => setMode('create')} className="btn btn--s btn--primary flex items-center gap-2 shrink-0 self-start sm:self-auto">
-          <Plus size={16} />
-          Skapa ny SUS-omgång
-        </button>
+        {canEdit && (
+          <button onClick={() => setMode('create')} className="btn btn--s btn--primary flex items-center gap-2 shrink-0 self-start sm:self-auto">
+            <Plus size={16} />
+            Skapa ny SUS-omgång
+          </button>
+        )}
       </div>
 
       {error && (
@@ -1772,10 +1780,14 @@ export default function SusAdminView() {
         <div className="p-8 text-center border-2 border-dashed border-inera-secondary-90 rounded-xl">
           <FileText size={32} className="mx-auto text-inera-neutral-40 mb-3" />
           <p className="text-inera-neutral-30 font-medium mb-1">Inga aktiva eller historiska SUS-omgångar</p>
-          <p className="text-xs text-inera-neutral-40 mb-4">Klicka på knappen nedan för att skapa din första mätomgång.</p>
-          <button onClick={() => setMode('create')} className="btn btn--s btn--primary">
-            Skapa ny SUS-omgång
-          </button>
+          <p className="text-xs text-inera-neutral-40 mb-4">
+            {canEdit ? 'Klicka på knappen nedan för att skapa din första mätomgång.' : 'Det finns för närvarande inga mätomgångar att visa.'}
+          </p>
+          {canEdit && (
+            <button onClick={() => setMode('create')} className="btn btn--s btn--primary">
+              Skapa ny SUS-omgång
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -10,17 +10,19 @@ import {
   Info, Calendar, ArrowUpRight, ArrowDownRight, Trash2, Settings,
   User as LucideUser, RefreshCw, Menu, X, ChevronDown, LayoutGrid,
   GitFork, Building2, Activity, Award, GraduationCap, Layers, CheckSquare,
-  Edit3, Key, Lock, ShieldAlert
+  Edit3, Key, Lock, ShieldAlert, Shield, ShieldCheck, UserCheck, UserPlus,
+  Copy, Check, Mail, Send, Eye, UserCog, ExternalLink, Sparkles
 } from 'lucide-react';
-import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updatePassword } from './firebase';
+import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updatePassword, updateProfile } from './firebase';
 import { Product, ProductService, Measurement, MeasurementService, ResponseData, Variant } from './services';
 import { loadProductMappings } from './services/catalogMappingService';
 import { triggerSusMetricsSync } from './services/syncService';
 import { cn, getSusGrade, calculateMedian, getMedianExplanation } from './lib/utils';
 import { format } from 'date-fns';
 import { sv } from 'date-fns/locale';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, query, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, query, where, serverTimestamp, addDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
+import { UserRole, Invitation } from './types';
 import ApiView from './components/ApiView';
 import RawDataView from './components/RawDataView';
 import CatalogMappingView from './components/CatalogMappingView';
@@ -39,34 +41,55 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState(initialError);
   const [message, setMessage] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const inviteParam = params.get('invite');
+      if (inviteParam) {
+        setInviteCode(inviteParam.trim());
+        setIsRegistering(true);
+      }
+    }
+  }, []);
+
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEmail = email.trim();
     const cleanPassword = password;
     const lowerEmail = cleanEmail.toLowerCase();
+    const cleanName = displayName.trim();
 
     try {
       setError('');
       setMessage('');
+      setIsProcessing(true);
 
       if (isForgotPassword) {
         if (!cleanEmail) {
           setError('Ange din e-postadress för att återställa lösenordet.');
+          setIsProcessing(false);
           return;
         }
         await sendPasswordResetEmail(auth, cleanEmail);
         setMessage(`En återställningslänk har skickats till ${cleanEmail}. Följ instruktionerna i e-postmeddelandet om du vill välja ett nytt lösenord.`);
         setIsForgotPassword(false);
         setPassword('');
+        setConfirmPassword('');
+        setIsProcessing(false);
         return;
       }
 
       if (!cleanEmail || !cleanPassword) {
         setError('Ange både e-postadress och lösenord.');
+        setIsProcessing(false);
         return;
       }
 
@@ -74,22 +97,106 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
 
       if (!isAllowedDomain) {
         setError('Bara e-postadresser från inera.se eller godkända domäner är tillåtna.');
+        setIsProcessing(false);
         return;
       }
 
       if (isRegistering) {
         if (!inviteCode.trim()) {
           setError('Inbjudningskod krävs.');
-          return;
-        }
-        const cleanCode = inviteCode.trim().toLowerCase();
-        if (cleanCode !== 'ineraux' && cleanCode !== 'ineraux2026') {
-          setError('Det var en felaktig inbjudningskod, kontakta ux@inera.se för korrekt kod.');
+          setIsProcessing(false);
           return;
         }
 
+        if (cleanPassword.length < 6) {
+          setError('Lösenordet måste vara minst 6 tecken långt.');
+          setIsProcessing(false);
+          return;
+        }
+
+        if (cleanPassword !== confirmPassword) {
+          setError('Lösenorden matchar inte.');
+          setIsProcessing(false);
+          return;
+        }
+
+        const cleanCode = inviteCode.trim();
+        const lowerCode = cleanCode.toLowerCase();
+        let assignedRole: UserRole = 'viewer';
+        let matchedInvitationDoc: any = null;
+
+        // Check fallback general codes
+        if (lowerCode === 'ineraux' || lowerCode === 'ineraux2026') {
+          assignedRole = (ADMIN_EMAILS.includes(lowerEmail)) ? 'admin' : 'viewer';
+        } else {
+          // Check in Firestore invitations collection
+          try {
+            const q = query(collection(db, 'invitations'), where('code', '==', cleanCode));
+            const snap = await getDocs(q);
+            if (snap.empty) {
+              setError('Det var en felaktig inbjudningskod, kontakta ux@inera.se för korrekt kod.');
+              setIsProcessing(false);
+              return;
+            }
+
+            const invDoc = snap.docs[0];
+            const invData = invDoc.data() as Invitation;
+
+            if (invData.status !== 'active') {
+              setError('Denna inbjudningskod har redan använts eller är inte längre aktiv.');
+              setIsProcessing(false);
+              return;
+            }
+
+            if (invData.email && invData.email.trim().toLowerCase() !== lowerEmail) {
+              setError(`Denna inbjudningskod är utfärdad för e-postadressen ${invData.email}. Vänligen registrera med samma e-postadress.`);
+              setIsProcessing(false);
+              return;
+            }
+
+            assignedRole = invData.role || 'viewer';
+            matchedInvitationDoc = invDoc;
+          } catch (invErr: any) {
+            console.error('Kunde inte verifiera inbjudningskod:', invErr);
+            setError('Det var en felaktig inbjudningskod, kontakta ux@inera.se för korrekt kod.');
+            setIsProcessing(false);
+            return;
+          }
+        }
+
+        // Super admin emails are always admin
+        if (lowerEmail === 'andreas.l.melin@gmail.com' || lowerEmail === 'andreas.melin@inera.se') {
+          assignedRole = 'admin';
+        }
+
         try {
-          await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+          const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+          const finalName = cleanName || (matchedInvitationDoc?.data()?.name) || cleanEmail.split('@')[0];
+
+          if (finalName) {
+            await updateProfile(userCredential.user, { displayName: finalName });
+          }
+
+          // Create user document in Firestore
+          await setDoc(doc(db, 'users', userCredential.user.uid), {
+            uid: userCredential.user.uid,
+            email: cleanEmail,
+            displayName: finalName,
+            role: assignedRole,
+            inviteCode: cleanCode,
+            isBlocked: false,
+            createdAt: serverTimestamp(),
+            lastLoggedIn: serverTimestamp()
+          }, { merge: true });
+
+          // Mark invitation as used if applicable
+          if (matchedInvitationDoc) {
+            await updateDoc(doc(db, 'invitations', matchedInvitationDoc.id), {
+              status: 'used',
+              usedAt: new Date().toISOString(),
+              usedBy: userCredential.user.uid
+            });
+          }
         } catch (regErr: any) {
           if (regErr.code === 'auth/email-already-in-use') {
             setError('Ett konto med den här e-postadressen finns redan. Vänligen logga in.');
@@ -117,6 +224,8 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
       }
     } catch (err: any) {
       setError(err.message || 'Ett fel uppstod.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -165,8 +274,24 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
               />
             </div>
           )}
+
+          {isRegistering && (
+            <div>
+              <label className="block text-sm font-bold text-inera-neutral-20 mb-1">
+                Fullständigt namn / Visningsnamn
+              </label>
+              <input 
+                type="text" 
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="input w-full"
+                placeholder="t.ex. Anna Svensson"
+              />
+            </div>
+          )}
+
           <div>
-            <label className="block text-sm font-bold text-inera-neutral-20 mb-1">E-post</label>
+            <label className="block text-sm font-bold text-inera-neutral-20 mb-1">E-post <span className="text-inera-error-40">*</span></label>
             <input 
               type="email" 
               value={email}
@@ -176,10 +301,13 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
               required
             />
           </div>
+
           {!isForgotPassword && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-bold text-inera-neutral-20">Lösenord</label>
+                <label className="block text-sm font-bold text-inera-neutral-20">
+                  {isRegistering ? 'Välj lösenord' : 'Lösenord'} <span className="text-inera-error-40">*</span>
+                </label>
                 {!isRegistering && (
                   <button 
                     type="button"
@@ -195,17 +323,37 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="input w-full"
-                placeholder="Min. 6 tecken"
+                placeholder="Minst 6 tecken"
                 required
               />
             </div>
           )}
+
+          {isRegistering && (
+            <div>
+              <label className="block text-sm font-bold text-inera-neutral-20 mb-1">
+                Bekräfta lösenord <span className="text-inera-error-40">*</span>
+              </label>
+              <input 
+                type="password" 
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="input w-full"
+                placeholder="Upprepa valt lösenord"
+                required
+              />
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={isRegistering && !inviteCode.trim()}
-            className="w-full btn btn--l btn--primary disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isProcessing || (isRegistering && !inviteCode.trim())}
+            className="w-full btn btn--l btn--primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {isForgotPassword ? 'Återställ lösenord' : (isRegistering ? 'Registrera' : 'Logga in')}
+            {isProcessing && <Loader2 size={18} className="animate-spin" />}
+            <span>
+              {isForgotPassword ? 'Återställ lösenord' : (isRegistering ? 'Registrera' : 'Logga in')}
+            </span>
           </button>
         </form>
 
@@ -231,6 +379,242 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
   );
 };
 
+const UserProfileModal = ({
+  user,
+  userDoc,
+  userRole,
+  onClose,
+  onUpdated
+}: {
+  user: User;
+  userDoc: any;
+  userRole: UserRole;
+  onClose: () => void;
+  onUpdated: (newName: string) => void;
+}) => {
+  const [displayName, setDisplayName] = useState(userDoc?.displayName || user.displayName || '');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      const cleanName = displayName.trim();
+      if (!cleanName) {
+        setError('Visningsnamn kan inte vara tomt.');
+        setLoading(false);
+        return;
+      }
+
+      // Update displayName in auth & firestore
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, { displayName: cleanName });
+      }
+      await updateDoc(doc(db, 'users', user.uid), {
+        displayName: cleanName
+      });
+
+      // Update password if entered
+      if (isChangingPassword && newPassword) {
+        if (newPassword.length < 6) {
+          setError('Lösenordet måste vara minst 6 tecken långt.');
+          setLoading(false);
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          setError('Lösenorden matchar inte.');
+          setLoading(false);
+          return;
+        }
+        if (auth.currentUser) {
+          await updatePassword(auth.currentUser, newPassword);
+          await updateDoc(doc(db, 'users', user.uid), {
+            passwordLastChangedAt: serverTimestamp(),
+            mustChangePassword: false
+          });
+        }
+      }
+
+      setSuccess('Din profil har uppdaterats!');
+      onUpdated(cleanName);
+      setTimeout(() => {
+        onClose();
+      }, 1200);
+    } catch (err: any) {
+      if (err.code === 'auth/requires-recent-login') {
+        setError('Av säkerhetsskäl krävs att du nyligen loggat in för att byta lösenord. Vänligen logga ut och in igen.');
+      } else {
+        setError(err.message || 'Kunde inte spara ändringar.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getRoleBadge = () => {
+    if (userRole === 'admin') {
+      return {
+        label: 'Administratör (Admin)',
+        desc: 'Fullständig systembehörighet. Kan administrera alla användare, inbjudningar, grundstruktur, kataloger och alla SUS-mätningar.',
+        color: 'bg-inera-primary-40/10 text-inera-primary-40 border-inera-primary-40/30'
+      };
+    }
+    if (userRole === 'editor') {
+      return {
+        label: 'Redaktör (Editor)',
+        desc: 'Skapande och redigering. Kan skapa och hantera SUS-omgångar, ladda upp mätningar och analysera alla resultat.',
+        color: 'bg-inera-accent-40/10 text-inera-accent-40 border-inera-accent-40/30'
+      };
+    }
+    return {
+      label: 'Läsbehörig (Viewer)',
+      desc: 'Granskningsbehörighet. Kan se dashboards, SUS-poäng, grafer, svar, kommentarssyntes och exportera data.',
+      color: 'bg-inera-secondary-90 text-inera-neutral-20 border-inera-secondary-90'
+    };
+  };
+
+  const roleInfo = getRoleBadge();
+
+  return (
+    <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+      <motion.div 
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        className="card p-6 sm:p-7 shadow-xl max-w-lg w-full border-inera-secondary-90 bg-white space-y-5"
+      >
+        <div className="flex items-center justify-between pb-3 border-b border-inera-secondary-90">
+          <div className="flex items-center gap-3 text-inera-primary-40">
+            <div className="w-10 h-10 rounded-full bg-inera-primary-40/10 flex items-center justify-center">
+              <LucideUser size={22} className="text-inera-primary-40" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold font-display text-inera-neutral-10">Användarprofil</h3>
+              <p className="text-xs text-inera-neutral-40">{user.email}</p>
+            </div>
+          </div>
+          <button 
+            type="button" 
+            onClick={onClose}
+            className="text-inera-neutral-40 hover:text-inera-neutral-10 p-1.5 rounded-lg hover:bg-inera-secondary-95"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="bg-inera-error-95 text-inera-error-40 border border-inera-error-40 p-3 rounded-lg text-xs flex items-start gap-2">
+            <AlertCircle size={16} className="shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {success && (
+          <div className="bg-inera-success-95 text-inera-success-40 border border-inera-success-40 p-3 rounded-lg text-xs flex items-start gap-2">
+            <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+            <span>{success}</span>
+          </div>
+        )}
+
+        {/* Assigned Role Info */}
+        <div className={cn("p-3.5 rounded-xl border text-xs space-y-1", roleInfo.color)}>
+          <div className="flex items-center gap-2 font-bold">
+            <ShieldCheck size={16} />
+            <span>Roll: {roleInfo.label}</span>
+          </div>
+          <p className="opacity-90 leading-relaxed">{roleInfo.desc}</p>
+        </div>
+
+        <form onSubmit={handleSave} className="space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-inera-neutral-30 flex items-center gap-1.5">
+              <Edit3 size={14} className="text-inera-primary-40" />
+              Visningsnamn (För- och efternamn)
+            </label>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="t.ex. Andreas Melin"
+              className="input w-full text-sm"
+              required
+            />
+            <p className="text-[11px] text-inera-neutral-40">Detta namn visas i menyer och rapporter.</p>
+          </div>
+
+          {/* Password Change Toggle */}
+          <div className="pt-2 border-t border-inera-secondary-90 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-inera-neutral-30 flex items-center gap-1.5">
+                <Key size={14} className="text-inera-accent-40" />
+                Byt lösenord
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsChangingPassword(!isChangingPassword)}
+                className="text-xs font-bold text-inera-primary-40 hover:underline"
+              >
+                {isChangingPassword ? 'Avbryt lösenordsbyte' : 'Ändra lösenord'}
+              </button>
+            </div>
+
+            {isChangingPassword && (
+              <div className="space-y-3 p-3 bg-inera-secondary-95 rounded-xl border border-inera-secondary-90">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-inera-neutral-30">Nytt lösenord</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Minst 6 tecken"
+                    className="input w-full text-sm bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-inera-neutral-30">Bekräfta nytt lösenord</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Upprepa nytt lösenord"
+                    className="input w-full text-sm bg-white"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-3 pt-3 border-t border-inera-secondary-90">
+            <button 
+              type="button" 
+              onClick={onClose} 
+              disabled={loading}
+              className="btn btn--m btn--secondary"
+            >
+              Avbryt
+            </button>
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="btn btn--m btn--primary flex items-center gap-2"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+              Spara ändringar
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
 const AdminView = ({ 
   activeAdminTab = 'users',
   uploadNode,
@@ -240,7 +624,9 @@ const AdminView = ({
   uploadNode?: React.ReactNode;
   onResetCatalog?: () => void;
 }) => {
+  const [usersSubView, setUsersSubView] = useState<'users' | 'invitations'>('users');
   const [users, setUsers] = useState<any[]>([]);
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -253,6 +639,10 @@ const AdminView = ({
   const [editDisplayName, setEditDisplayName] = useState('');
   const [isSavingName, setIsSavingName] = useState(false);
 
+  const [userToEditRole, setUserToEditRole] = useState<any | null>(null);
+  const [selectedNewRole, setSelectedNewRole] = useState<UserRole>('viewer');
+  const [isSavingRole, setIsSavingRole] = useState(false);
+
   const [userToChangePassword, setUserToChangePassword] = useState<any | null>(null);
   const [adminNewPassword, setAdminNewPassword] = useState('');
   const [forceChangeOnLogin, setForceChangeOnLogin] = useState(true);
@@ -260,29 +650,72 @@ const AdminView = ({
   const [pwdError, setPwdError] = useState('');
   const [pwdSuccess, setPwdSuccess] = useState('');
 
-  const fetchUsers = async () => {
+  // Invitation creation modal
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [inviteName, setInviteName] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<UserRole>('viewer');
+  const [inviteCode, setInviteCode] = useState('');
+  const [isCreatingInvite, setIsCreatingInvite] = useState(false);
+  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
+
+  const generateRandomCode = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let rand = '';
+    for (let i = 0; i < 5; i++) {
+      rand += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return `INERA-UX-${rand}`;
+  };
+
+  const openNewInviteModal = () => {
+    setInviteName('');
+    setInviteEmail('');
+    setInviteRole('viewer');
+    setInviteCode(generateRandomCode());
+    setIsInviteModalOpen(true);
+  };
+
+  const fetchUsersAndInvitations = async () => {
     setLoading(true);
     try {
-      const q = collection(db, 'users');
-      const snap = await getDocs(q);
-      const userList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const qUsers = collection(db, 'users');
+      const snapUsers = await getDocs(qUsers);
+      const userList = snapUsers.docs.map(d => ({ id: d.id, ...d.data() }));
       setUsers(userList);
+
+      const qInv = collection(db, 'invitations');
+      const snapInv = await getDocs(qInv);
+      const invList = snapInv.docs.map(d => ({ id: d.id, ...d.data() } as Invitation));
+      // Sort newest first
+      invList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      setInvitations(invList);
     } catch(err: any) {
-      setError(err.message || 'Kunde inte hämta användare');
+      setError(err.message || 'Kunde inte hämta användardata');
     }
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchUsers();
+    fetchUsersAndInvitations();
   }, []);
 
-  const toggleBlock = async (userId: string, currentStatus: boolean) => {
+  const isProtectedAdmin = (email?: string) => {
+    if (!email) return false;
+    const lower = email.toLowerCase();
+    return lower === 'andreas.l.melin@gmail.com' || lower === 'andreas.melin@inera.se';
+  };
+
+  const toggleBlock = async (userId: string, currentStatus: boolean, userEmail?: string) => {
+    if (isProtectedAdmin(userEmail)) {
+      setError('Huvudadministratören kan inte blockeras.');
+      return;
+    }
     try {
       await updateDoc(doc(db, 'users', userId), {
         isBlocked: !currentStatus
       });
-      fetchUsers();
+      fetchUsersAndInvitations();
     } catch(err: any) {
       setError(err.message || 'Kunde inte blockera/avblockera användare');
     }
@@ -290,11 +723,18 @@ const AdminView = ({
 
   const handleDeleteUser = async () => {
     if (!userToDelete) return;
+    if (isProtectedAdmin(userToDelete.email)) {
+      setError('Huvudadministratören kan inte raderas.');
+      setUserToDelete(null);
+      return;
+    }
     setIsDeletingUser(true);
     try {
       await deleteDoc(doc(db, 'users', userToDelete.id));
       setUserToDelete(null);
-      await fetchUsers();
+      await fetchUsersAndInvitations();
+      setSuccessMsg('Användaren raderades permanent.');
+      setTimeout(() => setSuccessMsg(''), 4000);
     } catch(err: any) {
       setError(err.message || 'Kunde inte radera användaren');
     } finally {
@@ -313,12 +753,94 @@ const AdminView = ({
       setSuccessMsg(`Namnet uppdaterades för ${userToEditName.email}`);
       setTimeout(() => setSuccessMsg(''), 4000);
       setUserToEditName(null);
-      await fetchUsers();
+      await fetchUsersAndInvitations();
     } catch (err: any) {
       setError(err.message || 'Kunde inte uppdatera namnet');
     } finally {
       setIsSavingName(false);
     }
+  };
+
+  const handleSaveRole = async () => {
+    if (!userToEditRole) return;
+    if (isProtectedAdmin(userToEditRole.email) && selectedNewRole !== 'admin') {
+      setError('Huvudadministratören måste alltid ha rollen Administratör.');
+      setUserToEditRole(null);
+      return;
+    }
+    setIsSavingRole(true);
+    setError('');
+    try {
+      await updateDoc(doc(db, 'users', userToEditRole.id), {
+        role: selectedNewRole
+      });
+      setSuccessMsg(`Rollen ändrades till ${selectedNewRole === 'admin' ? 'Administratör' : selectedNewRole === 'editor' ? 'Redaktör' : 'Läsbehörig'} för ${userToEditRole.displayName || userToEditRole.email}`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+      setUserToEditRole(null);
+      await fetchUsersAndInvitations();
+    } catch (err: any) {
+      setError(err.message || 'Kunde inte ändra roll');
+    } finally {
+      setIsSavingRole(false);
+    }
+  };
+
+  const handleCreateInvitation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteCode.trim()) {
+      setError('Inbjudningskod krävs.');
+      return;
+    }
+    setIsCreatingInvite(true);
+    setError('');
+    try {
+      const cleanCode = inviteCode.trim();
+      // Check if code already exists in invitations
+      const q = query(collection(db, 'invitations'), where('code', '==', cleanCode));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        setError('En inbjudan med denna kod finns redan. Välj en annan kod.');
+        setIsCreatingInvite(false);
+        return;
+      }
+
+      await addDoc(collection(db, 'invitations'), {
+        code: cleanCode,
+        name: inviteName.trim() || undefined,
+        email: inviteEmail.trim().toLowerCase() || undefined,
+        role: inviteRole,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        createdBy: auth.currentUser?.email || 'admin'
+      });
+
+      setSuccessMsg(`Inbjudan skapad med koden ${cleanCode}!`);
+      setTimeout(() => setSuccessMsg(''), 5000);
+      setIsInviteModalOpen(false);
+      await fetchUsersAndInvitations();
+    } catch (err: any) {
+      setError(err.message || 'Kunde inte skapa inbjudan');
+    } finally {
+      setIsCreatingInvite(false);
+    }
+  };
+
+  const handleDeleteInvitation = async (invId: string) => {
+    if (!confirm('Är du säker på att du vill återkalla/radera denna inbjudan?')) return;
+    try {
+      await deleteDoc(doc(db, 'invitations', invId));
+      setSuccessMsg('Inbjudan har tagits bort.');
+      setTimeout(() => setSuccessMsg(''), 4000);
+      await fetchUsersAndInvitations();
+    } catch (err: any) {
+      setError(err.message || 'Kunde inte radera inbjudan');
+    }
+  };
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedCodeId(id);
+    setTimeout(() => setCopiedCodeId(null), 2500);
   };
 
   const handleSavePasswordChange = async () => {
@@ -334,7 +856,6 @@ const AdminView = ({
           return;
         }
 
-        // Call our API endpoint to securely set the password of the user
         const token = await auth.currentUser?.getIdToken();
         let response;
         try {
@@ -351,7 +872,7 @@ const AdminView = ({
             })
           });
         } catch (fetchErr: any) {
-          throw new Error('Kunde inte nå backend-servern. Om du kör appen på en statisk host som Vercel, använd istället "Skicka länk för lösenordsåterställning" eftersom lösenord för andra användare kräver vår säkra backend.');
+          throw new Error('Kunde inte nå backend-servern. Använd istället "Skicka länk för lösenordsåterställning".');
         }
 
         let resData: any = {};
@@ -360,11 +881,11 @@ const AdminView = ({
           try {
             resData = JSON.parse(responseText);
           } catch (jsonErr) {
-            throw new Error('Kunde inte läsa svar från servern. Om du kör appen på en statisk host (t.ex. Vercel) saknas stöd för backend API:er. Använd istället "Skicka länk för lösenordsåterställning" nedan.');
+            throw new Error('Kunde inte läsa svar från servern. Använd istället "Skicka länk för lösenordsåterställning".');
           }
 
           if (!response.ok) {
-            throw new Error(resData.error || 'Misslyckades att ändra lösenordet via backend API.');
+            throw new Error(resData.error || 'Misslyckades att ändra lösenordet via backend.');
           }
         } else {
           throw new Error('Inget svar från servern.');
@@ -376,9 +897,9 @@ const AdminView = ({
         });
       }
 
-      setPwdSuccess(`Lösenordet och inställningarna har sparats för ${userToChangePassword.displayName || userToChangePassword.email}!`);
+      setPwdSuccess(`Lösenordsinställningarna har sparats för ${userToChangePassword.displayName || userToChangePassword.email}!`);
       setAdminNewPassword('');
-      await fetchUsers();
+      await fetchUsersAndInvitations();
     } catch (err: any) {
       setPwdError(err.message || 'Kunde inte uppdatera lösenordet');
     } finally {
@@ -386,12 +907,12 @@ const AdminView = ({
     }
   };
 
-  const handleSendResetEmail = async (email: string) => {
+  const handleSendResetEmail = async (targetEmail: string) => {
     setPwdError('');
     setPwdSuccess('');
     try {
-      await sendPasswordResetEmail(auth, email);
-      setPwdSuccess(`En länk för lösenordsåterställning har skickats till ${email}!`);
+      await sendPasswordResetEmail(auth, targetEmail);
+      setPwdSuccess(`En länk för lösenordsåterställning har skickats till ${targetEmail}!`);
     } catch (err: any) {
       setPwdError(err.message || 'Kunde inte skicka återställningslänk');
     }
@@ -411,115 +932,567 @@ const AdminView = ({
             transition={{ duration: 0.2 }}
             className="card p-6 shadow-md border-inera-secondary-90 bg-white"
           >
-            <div className="flex items-center justify-between mb-4">
+            {/* Header & Sub navigation */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-inera-secondary-90">
               <div>
-                <h2 className="text-xl font-bold font-display text-inera-neutral-10">Användarhantering</h2>
-                <p className="text-xs text-inera-neutral-40">Hantera konton, uppdatera namn, sätt nya lösenord och blockera användare.</p>
+                <h2 className="text-xl font-bold font-display text-inera-neutral-10">Användar- & Behörighetshantering</h2>
+                <p className="text-xs text-inera-neutral-40">Hantera roller (Admin, Editor, Viewer), redigera visningsnamn och bjud in nya medarbetare.</p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={openNewInviteModal}
+                  className="btn btn--s btn--primary flex items-center gap-2 shrink-0"
+                >
+                  <UserPlus size={16} />
+                  <span>Bjud in användare</span>
+                </button>
               </div>
             </div>
 
-            {error && <div className="text-inera-error-40 mb-4 bg-inera-error-95 border-inera-error-40 border p-4 rounded-lg">{error}</div>}
-            {successMsg && <div className="text-inera-success-40 mb-4 bg-inera-success-95 border-inera-success-40 border p-4 rounded-lg flex items-center gap-2"><CheckCircle2 size={18} /><span>{successMsg}</span></div>}
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[700px]">
-                <thead>
-                  <tr className="border-b border-inera-secondary-90 text-sm text-inera-neutral-40">
-                    <th className="pb-2 font-bold px-2">Namn</th>
-                    <th className="pb-2 font-bold px-2">E-post</th>
-                    <th className="pb-2 font-bold px-2">Senast inloggad</th>
-                    <th className="pb-2 font-bold px-2">Status</th>
-                    <th className="pb-2 font-bold px-2">Åtgärd</th>
-                  </tr>
-                </thead>
-                <motion.tbody layout>
-                  <AnimatePresence mode="popLayout">
-                  {users.map((u) => (
-                    <motion.tr 
-                      key={u.id} 
-                      layout
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="border-b border-inera-secondary-95 last:border-0 hover:bg-inera-secondary-95/50"
-                    >
-                      <td className="py-3 px-2 text-sm text-inera-neutral-10 font-medium">
-                        <div className="flex items-center gap-2">
-                          <span>{u.displayName || 'Ej angivet'}</span>
-                          <button
-                            onClick={() => {
-                              setUserToEditName(u);
-                              setEditDisplayName(u.displayName || '');
-                            }}
-                            className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
-                            title="Redigera namn"
-                          >
-                            <Edit3 size={14} />
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2 text-sm text-inera-neutral-20">{u.email}</td>
-                      <td className="py-3 px-2 text-sm text-inera-neutral-20">
-                        {u.lastLoggedIn ? format(u.lastLoggedIn.toDate ? u.lastLoggedIn.toDate() : new Date(u.lastLoggedIn.seconds * 1000), 'yyyy-MM-dd HH:mm') : 'Aldrig'}
-                      </td>
-                      <td className="py-3 px-2 text-sm">
-                        {u.isBlocked ? (
-                          <span className="bg-inera-error-95 text-inera-error-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-error-40">Blockerad</span>
-                        ) : u.mustChangePassword ? (
-                          <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-amber-300 flex items-center gap-1 w-max">
-                            <Lock size={10} /> Måste byta lösenord
-                          </span>
-                        ) : (
-                          <span className="bg-inera-success-95 text-inera-success-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-success-40">Aktiv</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <button
-                            onClick={() => {
-                              setUserToChangePassword(u);
-                              setAdminNewPassword('');
-                              setForceChangeOnLogin(true);
-                            }}
-                            className="btn btn--xs btn--secondary flex items-center gap-1"
-                            title="Byt lösenord för användaren"
-                          >
-                            <Key size={13} />
-                            Byt lösenord
-                          </button>
-                          <button 
-                            onClick={() => toggleBlock(u.id, !!u.isBlocked)}
-                            className={cn("btn btn--xs", u.isBlocked ? "btn--secondary" : "btn--tertiary")}
-                          >
-                            {u.isBlocked ? 'Avblockera' : 'Blockera'}
-                          </button>
-                          <button 
-                            onClick={() => setUserToDelete(u)}
-                            className="btn btn--xs btn--destructive flex items-center gap-1"
-                            title="Radera användare"
-                          >
-                            <Trash2 size={13} />
-                            Radera
-                          </button>
-                        </div>
-                      </td>
-                    </motion.tr>
-                  ))}
-                  </AnimatePresence>
-                </motion.tbody>
-              </table>
+            {/* Sub-view toggle tabs */}
+            <div className="flex items-center gap-2 mb-6 border-b border-inera-secondary-90 pb-2">
+              <button
+                type="button"
+                onClick={() => setUsersSubView('users')}
+                className={cn(
+                  "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-2",
+                  usersSubView === 'users' 
+                    ? "bg-inera-primary-40 text-white shadow-xs" 
+                    : "text-inera-neutral-30 hover:bg-inera-secondary-95"
+                )}
+              >
+                <Users size={14} />
+                <span>Användare ({users.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setUsersSubView('invitations')}
+                className={cn(
+                  "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-2",
+                  usersSubView === 'invitations' 
+                    ? "bg-inera-primary-40 text-white shadow-xs" 
+                    : "text-inera-neutral-30 hover:bg-inera-secondary-95"
+                )}
+              >
+                <Key size={14} />
+                <span>Inbjudningskoder ({invitations.length})</span>
+              </button>
             </div>
+
+            {error && <div className="text-inera-error-40 mb-4 bg-inera-error-95 border-inera-error-40 border p-4 rounded-lg text-sm">{error}</div>}
+            {successMsg && <div className="text-inera-success-40 mb-4 bg-inera-success-95 border-inera-success-40 border p-4 rounded-lg flex items-center gap-2 text-sm"><CheckCircle2 size={18} /><span>{successMsg}</span></div>}
+            
+            {usersSubView === 'users' ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[760px]">
+                  <thead>
+                    <tr className="border-b border-inera-secondary-90 text-xs font-bold text-inera-neutral-40 uppercase tracking-wider">
+                      <th className="pb-3 px-2">Visningsnamn</th>
+                      <th className="pb-3 px-2">E-postadress</th>
+                      <th className="pb-3 px-2">Roll & Behörighet</th>
+                      <th className="pb-3 px-2">Senast inloggad</th>
+                      <th className="pb-3 px-2">Status</th>
+                      <th className="pb-3 px-2 text-right">Åtgärder</th>
+                    </tr>
+                  </thead>
+                  <motion.tbody layout>
+                    <AnimatePresence mode="popLayout">
+                    {users.map((u) => {
+                      const isMainAdmin = isProtectedAdmin(u.email);
+                      const currentRole: UserRole = isMainAdmin ? 'admin' : (u.role || 'viewer');
+
+                      return (
+                        <motion.tr 
+                          key={u.id} 
+                          layout
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="border-b border-inera-secondary-95 last:border-0 hover:bg-inera-secondary-95/50 text-sm"
+                        >
+                          <td className="py-3 px-2 font-medium text-inera-neutral-10">
+                            <div className="flex items-center gap-2">
+                              <span>{u.displayName || 'Ej angivet'}</span>
+                              <button
+                                onClick={() => {
+                                  setUserToEditName(u);
+                                  setEditDisplayName(u.displayName || '');
+                                }}
+                                className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
+                                title="Redigera visningsnamn"
+                              >
+                                <Edit3 size={14} />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-3 px-2 text-inera-neutral-20">
+                            <div className="flex items-center gap-1.5">
+                              <span>{u.email}</span>
+                              {isMainAdmin && (
+                                <span className="text-[10px] bg-inera-primary-40/10 text-inera-primary-40 px-1.5 py-0.2 rounded font-bold uppercase tracking-wider" title="Huvudadministratör - Kan inte tas bort">
+                                  Huvudadministratör
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className={cn(
+                                "px-2.5 py-0.5 rounded-full text-xs font-bold border",
+                                currentRole === 'admin' 
+                                  ? "bg-inera-primary-40/10 text-inera-primary-40 border-inera-primary-40/30"
+                                  : currentRole === 'editor'
+                                  ? "bg-inera-accent-40/10 text-inera-accent-40 border-inera-accent-40/30"
+                                  : "bg-inera-secondary-90 text-inera-neutral-30 border-inera-secondary-90"
+                              )}>
+                                {currentRole === 'admin' ? 'Administratör' : currentRole === 'editor' ? 'Redaktör' : 'Läsbehörig'}
+                              </span>
+
+                              {!isMainAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUserToEditRole(u);
+                                    setSelectedNewRole(currentRole);
+                                  }}
+                                  className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
+                                  title="Ändra roll och behörighet"
+                                >
+                                  <UserCog size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-2 text-xs text-inera-neutral-40">
+                            {u.lastLoggedIn ? format(u.lastLoggedIn.toDate ? u.lastLoggedIn.toDate() : new Date(u.lastLoggedIn.seconds * 1000), 'yyyy-MM-dd HH:mm') : 'Aldrig'}
+                          </td>
+                          <td className="py-3 px-2">
+                            {u.isBlocked ? (
+                              <span className="bg-inera-error-95 text-inera-error-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-error-40">Blockerad</span>
+                            ) : u.mustChangePassword ? (
+                              <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-amber-300 flex items-center gap-1 w-max">
+                                <Lock size={10} /> Måste byta lösenord
+                              </span>
+                            ) : (
+                              <span className="bg-inera-success-95 text-inera-success-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-success-40">Aktiv</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-2 text-right">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              <button
+                                onClick={() => {
+                                  setUserToChangePassword(u);
+                                  setAdminNewPassword('');
+                                  setForceChangeOnLogin(true);
+                                }}
+                                className="btn btn--xs btn--secondary flex items-center gap-1"
+                                title="Byt lösenord för användaren"
+                              >
+                                <Key size={13} />
+                                Lösenord
+                              </button>
+                              
+                              {!isMainAdmin && (
+                                <>
+                                  <button 
+                                    onClick={() => toggleBlock(u.id, !!u.isBlocked, u.email)}
+                                    className={cn("btn btn--xs", u.isBlocked ? "btn--secondary" : "btn--tertiary")}
+                                    title={u.isBlocked ? "Avblockera konto" : "Blockera konto"}
+                                  >
+                                    {u.isBlocked ? 'Avblockera' : 'Blockera'}
+                                  </button>
+                                  <button 
+                                    onClick={() => setUserToDelete(u)}
+                                    className="btn btn--xs btn--destructive flex items-center gap-1"
+                                    title="Radera användare"
+                                  >
+                                    <Trash2 size={13} />
+                                    Radera
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </motion.tr>
+                      );
+                    })}
+                    </AnimatePresence>
+                  </motion.tbody>
+                </table>
+              </div>
+            ) : (
+              /* Invitations Table */
+              <div className="overflow-x-auto">
+                {invitations.length === 0 ? (
+                  <div className="p-8 text-center border-2 border-dashed border-inera-secondary-90 rounded-xl">
+                    <Key size={32} className="mx-auto text-inera-neutral-40 mb-3" />
+                    <p className="text-inera-neutral-30 font-medium mb-1">Inga skapade inbjudningar</p>
+                    <p className="text-xs text-inera-neutral-40 mb-4">Skapa en inbjudningskod för att bjuda in nya användare med specifik behörighet.</p>
+                    <button type="button" onClick={openNewInviteModal} className="btn btn--s btn--primary">
+                      Bjud in användare
+                    </button>
+                  </div>
+                ) : (
+                  <table className="w-full text-left border-collapse min-w-[760px]">
+                    <thead>
+                      <tr className="border-b border-inera-secondary-90 text-xs font-bold text-inera-neutral-40 uppercase tracking-wider">
+                        <th className="pb-3 px-2">Inbjudningskod</th>
+                        <th className="pb-3 px-2">Mottagare & E-post</th>
+                        <th className="pb-3 px-2">Tilldelad Roll</th>
+                        <th className="pb-3 px-2">Skapad datum</th>
+                        <th className="pb-3 px-2">Status</th>
+                        <th className="pb-3 px-2 text-right">Åtgärder</th>
+                      </tr>
+                    </thead>
+                    <motion.tbody layout>
+                      <AnimatePresence mode="popLayout">
+                      {invitations.map((inv) => {
+                        const regLink = typeof window !== 'undefined' ? `${window.location.origin}?invite=${encodeURIComponent(inv.code)}` : `?invite=${inv.code}`;
+                        return (
+                          <motion.tr 
+                            key={inv.id} 
+                            layout
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="border-b border-inera-secondary-95 last:border-0 hover:bg-inera-secondary-95/50 text-sm"
+                          >
+                            <td className="py-3 px-2 font-mono font-bold text-inera-primary-40">
+                              <div className="flex items-center gap-2">
+                                <span className="bg-inera-secondary-95 px-2 py-0.5 rounded border border-inera-secondary-90">{inv.code}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(inv.code, `code-${inv.id}`)}
+                                  className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
+                                  title="Kopiera inbjudningskod"
+                                >
+                                  {copiedCodeId === `code-${inv.id}` ? <Check size={14} className="text-inera-success-40" /> : <Copy size={14} />}
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-3 px-2 text-inera-neutral-20">
+                              <div className="leading-tight">
+                                <div className="font-medium text-inera-neutral-10">{inv.name || 'Öppen för alla'}</div>
+                                {inv.email && <div className="text-xs text-inera-neutral-40">{inv.email}</div>}
+                              </div>
+                            </td>
+                            <td className="py-3 px-2">
+                              <span className={cn(
+                                "px-2.5 py-0.5 rounded-full text-xs font-bold border",
+                                inv.role === 'admin' 
+                                  ? "bg-inera-primary-40/10 text-inera-primary-40 border-inera-primary-40/30"
+                                  : inv.role === 'editor'
+                                  ? "bg-inera-accent-40/10 text-inera-accent-40 border-inera-accent-40/30"
+                                  : "bg-inera-secondary-90 text-inera-neutral-30 border-inera-secondary-90"
+                              )}>
+                                {inv.role === 'admin' ? 'Administratör' : inv.role === 'editor' ? 'Redaktör' : 'Läsbehörig'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-2 text-xs text-inera-neutral-40">
+                              {inv.createdAt ? format(new Date(inv.createdAt), 'yyyy-MM-dd HH:mm') : '-'}
+                            </td>
+                            <td className="py-3 px-2">
+                              {inv.status === 'used' ? (
+                                <span className="bg-inera-secondary-90 text-inera-neutral-40 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-secondary-90">Använd</span>
+                              ) : (
+                                <span className="bg-inera-success-95 text-inera-success-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-success-40">Aktiv</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-2 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(regLink, `link-${inv.id}`)}
+                                  className="btn btn--xs btn--secondary flex items-center gap-1"
+                                  title="Kopiera direktlänk för registrering"
+                                >
+                                  {copiedCodeId === `link-${inv.id}` ? <Check size={12} className="text-inera-success-40" /> : <ExternalLink size={12} />}
+                                  {copiedCodeId === `link-${inv.id}` ? 'Kopierad länk' : 'Kopiera länk'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteInvitation(inv.id)}
+                                  className="btn btn--xs btn--destructive flex items-center gap-1"
+                                  title="Ta bort inbjudan"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          </motion.tr>
+                        );
+                      })}
+                      </AnimatePresence>
+                    </motion.tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
+            {/* Invite User Modal */}
+            {isInviteModalOpen && (
+              <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-inera-secondary-90">
+                    <div className="flex items-center gap-3 text-inera-primary-40">
+                      <UserPlus size={22} />
+                      <h3 className="text-lg font-bold font-display text-inera-neutral-10">Bjud in användare</h3>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => setIsInviteModalOpen(false)}
+                      className="text-inera-neutral-40 hover:text-inera-neutral-10 p-1.5 rounded-lg hover:bg-inera-secondary-95"
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-inera-neutral-40">
+                    Ange uppgifter för den nya användaren. När användaren registrerar sig med inbjudningskoden väljer hen sitt eget lösenord och får vald behörighet.
+                  </p>
+
+                  <form onSubmit={handleCreateInvitation} className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-inera-neutral-30">Namn (valfritt)</label>
+                      <input
+                        type="text"
+                        value={inviteName}
+                        onChange={(e) => setInviteName(e.target.value)}
+                        placeholder="t.ex. Karin Lindberg"
+                        className="input w-full text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-inera-neutral-30">E-postadress (valfritt för att låsa till specifik adress)</label>
+                      <input
+                        type="email"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        placeholder="karin.lindberg@inera.se"
+                        className="input w-full text-sm"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-inera-neutral-30">Roll & Behörighet</label>
+                      <div className="space-y-2">
+                        <label className={cn(
+                          "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+                          inviteRole === 'viewer' ? "border-inera-primary-40 bg-inera-primary-40/5" : "border-inera-secondary-90 hover:bg-inera-secondary-95"
+                        )}>
+                          <input 
+                            type="radio" 
+                            name="inviteRole" 
+                            value="viewer"
+                            checked={inviteRole === 'viewer'}
+                            onChange={() => setInviteRole('viewer')}
+                            className="mt-0.5 text-inera-primary-40 focus:ring-inera-primary-40"
+                          />
+                          <div className="text-xs">
+                            <div className="font-bold text-inera-neutral-10">Läsbehörig (Viewer)</div>
+                            <div className="text-inera-neutral-40 text-[11px] mt-0.5">Kan granska resultat, SUS-poäng, trender, grafer, svar och kommentarer.</div>
+                          </div>
+                        </label>
+
+                        <label className={cn(
+                          "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+                          inviteRole === 'editor' ? "border-inera-accent-40 bg-inera-accent-40/5" : "border-inera-secondary-90 hover:bg-inera-secondary-95"
+                        )}>
+                          <input 
+                            type="radio" 
+                            name="inviteRole" 
+                            value="editor"
+                            checked={inviteRole === 'editor'}
+                            onChange={() => setInviteRole('editor')}
+                            className="mt-0.5 text-inera-accent-40 focus:ring-inera-accent-40"
+                          />
+                          <div className="text-xs">
+                            <div className="font-bold text-inera-neutral-10">Redaktör (Editor)</div>
+                            <div className="text-inera-neutral-40 text-[11px] mt-0.5">Kan skapa och administrera nya SUS-omgångar, ladda upp mätdata och analysera resultat.</div>
+                          </div>
+                        </label>
+
+                        <label className={cn(
+                          "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+                          inviteRole === 'admin' ? "border-inera-primary-40 bg-inera-primary-40/5" : "border-inera-secondary-90 hover:bg-inera-secondary-95"
+                        )}>
+                          <input 
+                            type="radio" 
+                            name="inviteRole" 
+                            value="admin"
+                            checked={inviteRole === 'admin'}
+                            onChange={() => setInviteRole('admin')}
+                            className="mt-0.5 text-inera-primary-40 focus:ring-inera-primary-40"
+                          />
+                          <div className="text-xs">
+                            <div className="font-bold text-inera-neutral-10">Administratör (Admin)</div>
+                            <div className="text-inera-neutral-40 text-[11px] mt-0.5">Fullständig tillgång. Kan administrera roller, bjuda in användare, ändra grundstruktur och kataloger.</div>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-1">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-inera-neutral-30">Inbjudningskod <span className="text-inera-error-40">*</span></label>
+                        <button
+                          type="button"
+                          onClick={() => setInviteCode(generateRandomCode())}
+                          className="text-[11px] font-bold text-inera-primary-40 hover:underline flex items-center gap-1"
+                        >
+                          <RefreshCw size={11} /> Slumpa ny kod
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={inviteCode}
+                        onChange={(e) => setInviteCode(e.target.value)}
+                        placeholder="INERA-UX-XXXX"
+                        className="input w-full font-mono text-sm uppercase"
+                        required
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-3 border-t border-inera-secondary-90">
+                      <button 
+                        type="button" 
+                        onClick={() => setIsInviteModalOpen(false)}
+                        disabled={isCreatingInvite}
+                        className="btn btn--m btn--secondary"
+                      >
+                        Avbryt
+                      </button>
+                      <button 
+                        type="submit" 
+                        disabled={isCreatingInvite || !inviteCode.trim()}
+                        className="btn btn--m btn--primary flex items-center gap-2"
+                      >
+                        {isCreatingInvite ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                        Skapa inbjudan
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              </div>
+            )}
+
+            {/* Edit Role Modal */}
+            {userToEditRole && (
+              <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4"
+                >
+                  <div className="flex items-center gap-3 text-inera-primary-40">
+                    <UserCog size={22} />
+                    <h3 className="text-lg font-bold font-display text-inera-neutral-10">Ändra användarroll</h3>
+                  </div>
+                  <p className="text-xs text-inera-neutral-40">
+                    Välj behörighetsnivå för <strong>{userToEditRole.displayName || userToEditRole.email}</strong> ({userToEditRole.email}).
+                  </p>
+
+                  <div className="space-y-2 pt-2">
+                    <label className={cn(
+                      "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+                      selectedNewRole === 'viewer' ? "border-inera-primary-40 bg-inera-primary-40/5" : "border-inera-secondary-90 hover:bg-inera-secondary-95"
+                    )}>
+                      <input 
+                        type="radio" 
+                        name="editRole" 
+                        value="viewer"
+                        checked={selectedNewRole === 'viewer'}
+                        onChange={() => setSelectedNewRole('viewer')}
+                        className="mt-0.5 text-inera-primary-40 focus:ring-inera-primary-40"
+                      />
+                      <div className="text-xs">
+                        <div className="font-bold text-inera-neutral-10">Läsbehörig (Viewer)</div>
+                        <div className="text-inera-neutral-40 text-[11px] mt-0.5">Kan se resultat, SUS-poäng, grafer, svar och kommentarer.</div>
+                      </div>
+                    </label>
+
+                    <label className={cn(
+                      "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+                      selectedNewRole === 'editor' ? "border-inera-accent-40 bg-inera-accent-40/5" : "border-inera-secondary-90 hover:bg-inera-secondary-95"
+                    )}>
+                      <input 
+                        type="radio" 
+                        name="editRole" 
+                        value="editor"
+                        checked={selectedNewRole === 'editor'}
+                        onChange={() => setSelectedNewRole('editor')}
+                        className="mt-0.5 text-inera-accent-40 focus:ring-inera-accent-40"
+                      />
+                      <div className="text-xs">
+                        <div className="font-bold text-inera-neutral-10">Redaktör (Editor)</div>
+                        <div className="text-inera-neutral-40 text-[11px] mt-0.5">Kan skapa och redigera SUS-omgångar, ladda upp mätningar och analysera alla resultat.</div>
+                      </div>
+                    </label>
+
+                    <label className={cn(
+                      "flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all",
+                      selectedNewRole === 'admin' ? "border-inera-primary-40 bg-inera-primary-40/5" : "border-inera-secondary-90 hover:bg-inera-secondary-95"
+                    )}>
+                      <input 
+                        type="radio" 
+                        name="editRole" 
+                        value="admin"
+                        checked={selectedNewRole === 'admin'}
+                        onChange={() => setSelectedNewRole('admin')}
+                        className="mt-0.5 text-inera-primary-40 focus:ring-inera-primary-40"
+                      />
+                      <div className="text-xs">
+                        <div className="font-bold text-inera-neutral-10">Administratör (Admin)</div>
+                        <div className="text-inera-neutral-40 text-[11px] mt-0.5">Fullständig tillgång. Kan administrera roller, bjuda in användare och ändra systeminställningar.</div>
+                      </div>
+                    </label>
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-3 border-t border-inera-secondary-90">
+                    <button 
+                      type="button" 
+                      onClick={() => setUserToEditRole(null)}
+                      disabled={isSavingRole}
+                      className="btn btn--m btn--secondary"
+                    >
+                      Avbryt
+                    </button>
+                    <button 
+                      type="button" 
+                      onClick={handleSaveRole}
+                      disabled={isSavingRole}
+                      className="btn btn--m btn--primary flex items-center gap-2"
+                    >
+                      {isSavingRole ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                      Spara roll
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
 
             {/* Edit Name Modal */}
             {userToEditName && (
               <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-                <div className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4">
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4"
+                >
                   <div className="flex items-center gap-3 text-inera-primary-40">
                     <Edit3 size={22} />
-                    <h3 className="text-lg font-bold font-display text-inera-neutral-10">Redigera användarnamn</h3>
+                    <h3 className="text-lg font-bold font-display text-inera-neutral-10">Redigera visningsnamn</h3>
                   </div>
-                  <p className="text-xs text-inera-neutral-40">Uppdatera det namn som visas i gränssnittet och i menyer för användaren ({userToEditName.email}).</p>
+                  <p className="text-xs text-inera-neutral-40">Uppdatera det namn som visas i menyer och rapporter för användaren ({userToEditName.email}).</p>
                   
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-inera-neutral-30">Fullständigt namn / Visningsnamn</label>
@@ -550,20 +1523,24 @@ const AdminView = ({
                       Spara namn
                     </button>
                   </div>
-                </div>
+                </motion.div>
               </div>
             )}
 
             {/* Admin Change Password Modal */}
             {userToChangePassword && (
               <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-                <div className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4">
-                  <div className="flex items-center gap-3 text-[#a63363]">
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4"
+                >
+                  <div className="flex items-center gap-3 text-inera-primary-40">
                     <Key size={22} />
-                    <h3 className="text-lg font-bold font-display text-inera-neutral-10">Byt lösenord</h3>
+                    <h3 className="text-lg font-bold font-display text-inera-neutral-10">Byt lösenord / Återställning</h3>
                   </div>
                   <p className="text-xs text-inera-neutral-40">
-                    Sätt nytt lösenord eller aktivera krav på lösenordsbyte för <strong>{userToChangePassword.displayName || userToChangePassword.email}</strong>.
+                    Sätt nytt lösenord eller skicka återställningslänk för <strong>{userToChangePassword.displayName || userToChangePassword.email}</strong>.
                   </p>
 
                   {pwdError && (
@@ -664,14 +1641,18 @@ const AdminView = ({
                       </>
                     )}
                   </div>
-                </div>
+                </motion.div>
               </div>
             )}
 
             {/* Delete User Warning Modal */}
             {userToDelete && (
               <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-                <div className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4">
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4"
+                >
                   <div className="flex items-center gap-3 text-inera-error-40">
                     <AlertCircle size={24} />
                     <h3 className="text-lg font-bold font-display text-inera-neutral-10">Radera användare</h3>
@@ -697,7 +1678,7 @@ const AdminView = ({
                       {isDeletingUser ? 'Raderar...' : 'Ja, radera användaren'}
                     </button>
                   </div>
-                </div>
+                </motion.div>
               </div>
             )}
           </motion.div>
