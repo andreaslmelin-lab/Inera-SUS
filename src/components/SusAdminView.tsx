@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
-import { SusSurvey, Product, SurveyRespondent, SusResponse, SurveyTheme } from '../types';
+import { SusSurvey, Product, SurveyRespondent, SusResponse, SurveyTheme, DEFAULT_SURVEY_TEXTS } from '../types';
 import { 
   Plus, AlertCircle, ChevronRight, ChevronLeft, Copy, Check, Trash2, Upload, 
   Users, Link2, Calendar, FileText, Download, RefreshCw, ExternalLink, BarChart2,
@@ -66,10 +66,15 @@ export default function SusAdminView({ canEdit = true, userRole = 'admin' }: { c
     endCondition: 'date',
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear(),
-    introText: '',
-    freeTextLabel: '',
-    thankYouText: '',
-    alreadyAnsweredText: '',
+    introTitle: DEFAULT_SURVEY_TEXTS.introTitle,
+    introText: DEFAULT_SURVEY_TEXTS.introText,
+    commentTitle: DEFAULT_SURVEY_TEXTS.commentTitle,
+    commentSubtitle: DEFAULT_SURVEY_TEXTS.commentSubtitle,
+    freeTextLabel: DEFAULT_SURVEY_TEXTS.freeTextLabel,
+    thankYouTitle: DEFAULT_SURVEY_TEXTS.thankYouTitle,
+    thankYouText: DEFAULT_SURVEY_TEXTS.thankYouText,
+    alreadyAnsweredTitle: DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle,
+    alreadyAnsweredText: DEFAULT_SURVEY_TEXTS.alreadyAnsweredText,
     externalSurveyEnabled: false,
     externalSurveyUrl: '',
     externalSurveyBtnText: 'Fortsätt'
@@ -353,10 +358,15 @@ export default function SusAdminView({ canEdit = true, userRole = 'admin' }: { c
         endCondition: formData.endCondition || 'date',
         endDate: formData.endDate || '',
         maxResponses: formData.maxResponses || null,
-        introText: formData.introText || '',
-        freeTextLabel: formData.freeTextLabel || '',
-        thankYouText: formData.thankYouText || '',
-        alreadyAnsweredText: formData.alreadyAnsweredText || '',
+        introTitle: formData.introTitle ?? DEFAULT_SURVEY_TEXTS.introTitle,
+        introText: formData.introText ?? DEFAULT_SURVEY_TEXTS.introText,
+        commentTitle: formData.commentTitle ?? DEFAULT_SURVEY_TEXTS.commentTitle,
+        commentSubtitle: formData.commentSubtitle ?? DEFAULT_SURVEY_TEXTS.commentSubtitle,
+        freeTextLabel: formData.freeTextLabel ?? DEFAULT_SURVEY_TEXTS.freeTextLabel,
+        thankYouTitle: formData.thankYouTitle ?? DEFAULT_SURVEY_TEXTS.thankYouTitle,
+        thankYouText: formData.thankYouText ?? DEFAULT_SURVEY_TEXTS.thankYouText,
+        alreadyAnsweredTitle: formData.alreadyAnsweredTitle ?? DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle,
+        alreadyAnsweredText: formData.alreadyAnsweredText ?? DEFAULT_SURVEY_TEXTS.alreadyAnsweredText,
         externalSurveyEnabled: formData.externalSurveyEnabled || false,
         externalSurveyUrl: formData.externalSurveyUrl ? ensureAbsoluteUrl(formData.externalSurveyUrl) : '',
         externalSurveyBtnText: formData.externalSurveyBtnText || 'Fortsätt',
@@ -372,7 +382,18 @@ export default function SusAdminView({ canEdit = true, userRole = 'admin' }: { c
         endCondition: 'date',
         month: new Date().getMonth() + 1,
         year: new Date().getFullYear(),
-        alreadyAnsweredText: ''
+        introTitle: DEFAULT_SURVEY_TEXTS.introTitle,
+        introText: DEFAULT_SURVEY_TEXTS.introText,
+        commentTitle: DEFAULT_SURVEY_TEXTS.commentTitle,
+        commentSubtitle: DEFAULT_SURVEY_TEXTS.commentSubtitle,
+        freeTextLabel: DEFAULT_SURVEY_TEXTS.freeTextLabel,
+        thankYouTitle: DEFAULT_SURVEY_TEXTS.thankYouTitle,
+        thankYouText: DEFAULT_SURVEY_TEXTS.thankYouText,
+        alreadyAnsweredTitle: DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle,
+        alreadyAnsweredText: DEFAULT_SURVEY_TEXTS.alreadyAnsweredText,
+        externalSurveyEnabled: false,
+        externalSurveyUrl: '',
+        externalSurveyBtnText: 'Fortsätt'
       });
       fetchData();
     } catch (err) {
@@ -388,7 +409,19 @@ export default function SusAdminView({ canEdit = true, userRole = 'admin' }: { c
   };
 
   const openEditModal = (survey: SusSurvey) => {
-    setEditFormData({ ...survey, theme: survey.theme || '1177_invanare' });
+    setEditFormData({ 
+      ...survey, 
+      theme: survey.theme || '1177_invanare',
+      introTitle: survey.introTitle ?? DEFAULT_SURVEY_TEXTS.introTitle,
+      introText: survey.introText ?? DEFAULT_SURVEY_TEXTS.introText,
+      commentTitle: survey.commentTitle ?? DEFAULT_SURVEY_TEXTS.commentTitle,
+      commentSubtitle: survey.commentSubtitle ?? DEFAULT_SURVEY_TEXTS.commentSubtitle,
+      freeTextLabel: survey.freeTextLabel ?? DEFAULT_SURVEY_TEXTS.freeTextLabel,
+      thankYouTitle: survey.thankYouTitle ?? DEFAULT_SURVEY_TEXTS.thankYouTitle,
+      thankYouText: survey.thankYouText ?? DEFAULT_SURVEY_TEXTS.thankYouText,
+      alreadyAnsweredTitle: survey.alreadyAnsweredTitle ?? DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle,
+      alreadyAnsweredText: survey.alreadyAnsweredText ?? DEFAULT_SURVEY_TEXTS.alreadyAnsweredText,
+    });
     setEditError('');
     setIsEditing(true);
   };
@@ -425,10 +458,15 @@ export default function SusAdminView({ canEdit = true, userRole = 'admin' }: { c
         endCondition: editFormData.endCondition || 'date',
         endDate: editFormData.endDate || '',
         maxResponses: editFormData.maxResponses || null,
-        introText: editFormData.introText || '',
-        freeTextLabel: editFormData.freeTextLabel || '',
-        thankYouText: editFormData.thankYouText || '',
-        alreadyAnsweredText: editFormData.alreadyAnsweredText || '',
+        introTitle: editFormData.introTitle ?? DEFAULT_SURVEY_TEXTS.introTitle,
+        introText: editFormData.introText ?? DEFAULT_SURVEY_TEXTS.introText,
+        commentTitle: editFormData.commentTitle ?? DEFAULT_SURVEY_TEXTS.commentTitle,
+        commentSubtitle: editFormData.commentSubtitle ?? DEFAULT_SURVEY_TEXTS.commentSubtitle,
+        freeTextLabel: editFormData.freeTextLabel ?? DEFAULT_SURVEY_TEXTS.freeTextLabel,
+        thankYouTitle: editFormData.thankYouTitle ?? DEFAULT_SURVEY_TEXTS.thankYouTitle,
+        thankYouText: editFormData.thankYouText ?? DEFAULT_SURVEY_TEXTS.thankYouText,
+        alreadyAnsweredTitle: editFormData.alreadyAnsweredTitle ?? DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle,
+        alreadyAnsweredText: editFormData.alreadyAnsweredText ?? DEFAULT_SURVEY_TEXTS.alreadyAnsweredText,
         externalSurveyEnabled: editFormData.externalSurveyEnabled || false,
         externalSurveyUrl: editFormData.externalSurveyUrl ? ensureAbsoluteUrl(editFormData.externalSurveyUrl) : '',
         externalSurveyBtnText: editFormData.externalSurveyBtnText || 'Fortsätt'
@@ -1272,42 +1310,126 @@ export default function SusAdminView({ canEdit = true, userRole = 'admin' }: { c
                   )}
                 </div>
 
-                <div className="pt-4 border-t border-inera-secondary-90 space-y-4">
-                  <label className="block text-sm font-bold text-inera-neutral-20">Anpassa enkättexter</label>
+                <div className="pt-4 border-t border-inera-secondary-90 space-y-5">
                   <div>
-                    <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Introduktionstext</label>
-                    <textarea 
-                      className="input w-full text-sm h-20" 
-                      value={editFormData.introText || ''} 
-                      onChange={(e) => setEditFormData({ ...editFormData, introText: e.target.value })} 
-                    />
+                    <label className="block text-sm font-bold text-inera-neutral-20 mb-1">Anpassa redigerbara enkättexter</label>
+                    <p className="text-xs text-inera-neutral-40">
+                      Fälten nedan visar standardtexten om inga ändringar görs. Du kan redigera både rubriker och underliggande brödtexter för samtliga steg. Använd <code className="bg-inera-secondary-90 px-1 py-0.5 rounded text-[11px] font-mono text-inera-neutral-10">[Produkten]</code> som platshållare för produktnamnet.
+                    </p>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Fritextfråga etikett</label>
-                    <input 
-                      type="text" 
-                      className="input w-full text-sm" 
-                      value={editFormData.freeTextLabel || ''} 
-                      onChange={(e) => setEditFormData({ ...editFormData, freeTextLabel: e.target.value })} 
-                    />
+
+                  {/* 1. Startskärm */}
+                  <div className="p-4 rounded-xl border border-inera-secondary-90 bg-inera-secondary-95/30 space-y-3">
+                    <div className="text-xs font-bold text-inera-primary-40 uppercase tracking-wide flex items-center gap-1.5">
+                      <FileText size={14} /> Startskärm (Inledning)
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Rubrik</label>
+                      <input 
+                        type="text" 
+                        className="input w-full text-sm font-medium" 
+                        placeholder={DEFAULT_SURVEY_TEXTS.introTitle}
+                        value={editFormData.introTitle ?? DEFAULT_SURVEY_TEXTS.introTitle} 
+                        onChange={(e) => setEditFormData({ ...editFormData, introTitle: e.target.value })} 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Inledningstext</label>
+                      <textarea 
+                        className="input w-full text-sm h-20" 
+                        placeholder={DEFAULT_SURVEY_TEXTS.introText}
+                        value={editFormData.introText ?? DEFAULT_SURVEY_TEXTS.introText} 
+                        onChange={(e) => setEditFormData({ ...editFormData, introText: e.target.value })} 
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Tacktext</label>
-                    <input 
-                      type="text" 
-                      className="input w-full text-sm" 
-                      value={editFormData.thankYouText || ''} 
-                      onChange={(e) => setEditFormData({ ...editFormData, thankYouText: e.target.value })} 
-                    />
+
+                  {/* 2. Kommentarssteg */}
+                  <div className="p-4 rounded-xl border border-inera-secondary-90 bg-inera-secondary-95/30 space-y-3">
+                    <div className="text-xs font-bold text-inera-primary-40 uppercase tracking-wide flex items-center gap-1.5">
+                      <MessageSquare size={14} /> Kommentarssteg (Frivillig kommentar & granskning)
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Rubrik</label>
+                      <input 
+                        type="text" 
+                        className="input w-full text-sm font-medium" 
+                        placeholder={DEFAULT_SURVEY_TEXTS.commentTitle}
+                        value={editFormData.commentTitle ?? DEFAULT_SURVEY_TEXTS.commentTitle} 
+                        onChange={(e) => setEditFormData({ ...editFormData, commentTitle: e.target.value })} 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Underliggande text (Beskrivning)</label>
+                      <textarea 
+                        className="input w-full text-sm h-16" 
+                        placeholder={DEFAULT_SURVEY_TEXTS.commentSubtitle}
+                        value={editFormData.commentSubtitle ?? DEFAULT_SURVEY_TEXTS.commentSubtitle} 
+                        onChange={(e) => setEditFormData({ ...editFormData, commentSubtitle: e.target.value })} 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Fritextfråga etikett</label>
+                      <input 
+                        type="text" 
+                        className="input w-full text-sm" 
+                        placeholder={DEFAULT_SURVEY_TEXTS.freeTextLabel}
+                        value={editFormData.freeTextLabel ?? DEFAULT_SURVEY_TEXTS.freeTextLabel} 
+                        onChange={(e) => setEditFormData({ ...editFormData, freeTextLabel: e.target.value })} 
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Text för redan besvarad enkät (använd [ProductName] som platshållare)</label>
-                    <input 
-                      type="text" 
-                      className="input w-full text-sm" 
-                      value={editFormData.alreadyAnsweredText || ''} 
-                      onChange={(e) => setEditFormData({ ...editFormData, alreadyAnsweredText: e.target.value })} 
-                    />
+
+                  {/* 3. Tackskärm */}
+                  <div className="p-4 rounded-xl border border-inera-secondary-90 bg-inera-secondary-95/30 space-y-3">
+                    <div className="text-xs font-bold text-inera-primary-40 uppercase tracking-wide flex items-center gap-1.5">
+                      <CheckCircle2 size={14} /> Tackskärm (Efter inskick)
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Rubrik</label>
+                      <input 
+                        type="text" 
+                        className="input w-full text-sm font-medium" 
+                        placeholder={DEFAULT_SURVEY_TEXTS.thankYouTitle}
+                        value={editFormData.thankYouTitle ?? DEFAULT_SURVEY_TEXTS.thankYouTitle} 
+                        onChange={(e) => setEditFormData({ ...editFormData, thankYouTitle: e.target.value })} 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Underliggande tacktext</label>
+                      <textarea 
+                        className="input w-full text-sm h-16" 
+                        placeholder={DEFAULT_SURVEY_TEXTS.thankYouText}
+                        value={editFormData.thankYouText ?? DEFAULT_SURVEY_TEXTS.thankYouText} 
+                        onChange={(e) => setEditFormData({ ...editFormData, thankYouText: e.target.value })} 
+                      />
+                    </div>
+                  </div>
+
+                  {/* 4. Redan besvarad enkät */}
+                  <div className="p-4 rounded-xl border border-inera-secondary-90 bg-inera-secondary-95/30 space-y-3">
+                    <div className="text-xs font-bold text-inera-primary-40 uppercase tracking-wide flex items-center gap-1.5">
+                      <Info size={14} /> Sida för redan besvarad enkät
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Rubrik</label>
+                      <input 
+                        type="text" 
+                        className="input w-full text-sm font-medium" 
+                        placeholder={DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle}
+                        value={editFormData.alreadyAnsweredTitle ?? DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle} 
+                        onChange={(e) => setEditFormData({ ...editFormData, alreadyAnsweredTitle: e.target.value })} 
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Underliggande meddelande</label>
+                      <textarea 
+                        className="input w-full text-sm h-16" 
+                        placeholder={DEFAULT_SURVEY_TEXTS.alreadyAnsweredText}
+                        value={editFormData.alreadyAnsweredText ?? DEFAULT_SURVEY_TEXTS.alreadyAnsweredText} 
+                        onChange={(e) => setEditFormData({ ...editFormData, alreadyAnsweredText: e.target.value })} 
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1566,50 +1688,126 @@ export default function SusAdminView({ canEdit = true, userRole = 'admin' }: { c
               )}
             </div>
 
-            <div className="pt-4 border-t border-inera-secondary-90 space-y-4">
-              <label className="block text-sm font-bold text-inera-neutral-20">Anpassa redigerbara enkättexter (Valfritt)</label>
-              
+            <div className="pt-4 border-t border-inera-secondary-90 space-y-5">
               <div>
-                <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Inledningstext (använd [Produkten] som platshållare)</label>
-                <textarea 
-                  className="input w-full text-sm h-20" 
-                  placeholder={`Vi vill veta hur du upplevde att använda [Produkten]. Enkäten består av tio påståenden. Ungefärlig tid att fylla i enkäten, 1-2 minuter...`}
-                  value={formData.introText || ''}
-                  onChange={(e) => setFormData({...formData, introText: e.target.value})}
-                />
+                <label className="block text-sm font-bold text-inera-neutral-20 mb-1">Anpassa redigerbara enkättexter</label>
+                <p className="text-xs text-inera-neutral-40">
+                  Fälten nedan visar standardtexten om inga ändringar görs. Du kan redigera både rubriker och underliggande brödtexter för samtliga steg. Använd <code className="bg-inera-secondary-90 px-1 py-0.5 rounded text-[11px] font-mono text-inera-neutral-10">[Produkten]</code> som platshållare för produktnamnet.
+                </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Fritextfråga etikett</label>
-                <input 
-                  type="text" 
-                  className="input w-full text-sm" 
-                  placeholder={`Har du något mer du vill berätta om din upplevelse av [Produkten]?`}
-                  value={formData.freeTextLabel || ''}
-                  onChange={(e) => setFormData({...formData, freeTextLabel: e.target.value})}
-                />
+              {/* 1. Startskärm */}
+              <div className="p-4 rounded-xl border border-inera-secondary-90 bg-inera-secondary-95/30 space-y-3">
+                <div className="text-xs font-bold text-inera-primary-40 uppercase tracking-wide flex items-center gap-1.5">
+                  <FileText size={14} /> Startskärm (Inledning)
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Rubrik</label>
+                  <input 
+                    type="text" 
+                    className="input w-full text-sm font-medium" 
+                    placeholder={DEFAULT_SURVEY_TEXTS.introTitle}
+                    value={formData.introTitle ?? DEFAULT_SURVEY_TEXTS.introTitle} 
+                    onChange={(e) => setFormData({ ...formData, introTitle: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Inledningstext</label>
+                  <textarea 
+                    className="input w-full text-sm h-20" 
+                    placeholder={DEFAULT_SURVEY_TEXTS.introText}
+                    value={formData.introText ?? DEFAULT_SURVEY_TEXTS.introText} 
+                    onChange={(e) => setFormData({ ...formData, introText: e.target.value })} 
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Tacktext efter inskick</label>
-                <input 
-                  type="text" 
-                  className="input w-full text-sm" 
-                  placeholder={`Tack för att du tog dig tid att svara. Dina synpunkter hjälper oss...`}
-                  value={formData.thankYouText || ''}
-                  onChange={(e) => setFormData({...formData, thankYouText: e.target.value})}
-                />
+              {/* 2. Kommentarssteg */}
+              <div className="p-4 rounded-xl border border-inera-secondary-90 bg-inera-secondary-95/30 space-y-3">
+                <div className="text-xs font-bold text-inera-primary-40 uppercase tracking-wide flex items-center gap-1.5">
+                  <MessageSquare size={14} /> Kommentarssteg (Frivillig kommentar & granskning)
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Rubrik</label>
+                  <input 
+                    type="text" 
+                    className="input w-full text-sm font-medium" 
+                    placeholder={DEFAULT_SURVEY_TEXTS.commentTitle}
+                    value={formData.commentTitle ?? DEFAULT_SURVEY_TEXTS.commentTitle} 
+                    onChange={(e) => setFormData({ ...formData, commentTitle: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Underliggande text (Beskrivning)</label>
+                  <textarea 
+                    className="input w-full text-sm h-16" 
+                    placeholder={DEFAULT_SURVEY_TEXTS.commentSubtitle}
+                    value={formData.commentSubtitle ?? DEFAULT_SURVEY_TEXTS.commentSubtitle} 
+                    onChange={(e) => setFormData({ ...formData, commentSubtitle: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Fritextfråga etikett</label>
+                  <input 
+                    type="text" 
+                    className="input w-full text-sm" 
+                    placeholder={DEFAULT_SURVEY_TEXTS.freeTextLabel}
+                    value={formData.freeTextLabel ?? DEFAULT_SURVEY_TEXTS.freeTextLabel} 
+                    onChange={(e) => setFormData({ ...formData, freeTextLabel: e.target.value })} 
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Text för redan besvarad enkät (använd [ProductName] som platshållare)</label>
-                <input 
-                  type="text" 
-                  className="input w-full text-sm" 
-                  placeholder={`Denna länk har redan använts för att registrera en utvärdering för [ProductName] och kan inte användas fler gånger.`}
-                  value={formData.alreadyAnsweredText || ''}
-                  onChange={(e) => setFormData({...formData, alreadyAnsweredText: e.target.value})}
-                />
+              {/* 3. Tackskärm */}
+              <div className="p-4 rounded-xl border border-inera-secondary-90 bg-inera-secondary-95/30 space-y-3">
+                <div className="text-xs font-bold text-inera-primary-40 uppercase tracking-wide flex items-center gap-1.5">
+                  <CheckCircle2 size={14} /> Tackskärm (Efter inskick)
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Rubrik</label>
+                  <input 
+                    type="text" 
+                    className="input w-full text-sm font-medium" 
+                    placeholder={DEFAULT_SURVEY_TEXTS.thankYouTitle}
+                    value={formData.thankYouTitle ?? DEFAULT_SURVEY_TEXTS.thankYouTitle} 
+                    onChange={(e) => setFormData({ ...formData, thankYouTitle: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Underliggande tacktext</label>
+                  <textarea 
+                    className="input w-full text-sm h-16" 
+                    placeholder={DEFAULT_SURVEY_TEXTS.thankYouText}
+                    value={formData.thankYouText ?? DEFAULT_SURVEY_TEXTS.thankYouText} 
+                    onChange={(e) => setFormData({ ...formData, thankYouText: e.target.value })} 
+                  />
+                </div>
+              </div>
+
+              {/* 4. Redan besvarad enkät */}
+              <div className="p-4 rounded-xl border border-inera-secondary-90 bg-inera-secondary-95/30 space-y-3">
+                <div className="text-xs font-bold text-inera-primary-40 uppercase tracking-wide flex items-center gap-1.5">
+                  <Info size={14} /> Sida för redan besvarad enkät
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Rubrik</label>
+                  <input 
+                    type="text" 
+                    className="input w-full text-sm font-medium" 
+                    placeholder={DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle}
+                    value={formData.alreadyAnsweredTitle ?? DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle} 
+                    onChange={(e) => setFormData({ ...formData, alreadyAnsweredTitle: e.target.value })} 
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-inera-neutral-40 mb-1">Underliggande meddelande</label>
+                  <textarea 
+                    className="input w-full text-sm h-16" 
+                    placeholder={DEFAULT_SURVEY_TEXTS.alreadyAnsweredText}
+                    value={formData.alreadyAnsweredText ?? DEFAULT_SURVEY_TEXTS.alreadyAnsweredText} 
+                    onChange={(e) => setFormData({ ...formData, alreadyAnsweredText: e.target.value })} 
+                  />
+                </div>
               </div>
             </div>
           </div>

@@ -101,6 +101,18 @@ export interface ResponseData {
 
 export type SurveyTheme = '1177_invanare' | '1177_vardpersonal' | 'inera_b2b' | 'inera_invanare';
 
+export const DEFAULT_SURVEY_TEXTS = {
+  introTitle: 'Utvärdering av [Produkten]',
+  introText: 'Vi vill veta hur du upplevde att använda [Produkten]. Enkäten består av tio påståenden. Utgå från din senaste användning av produkten när du svarar.',
+  commentTitle: 'Frivillig kommentar & inskick',
+  commentSubtitle: 'Du har besvarat alla 10 påståenden för [Produkten]. Du kan lämna en valfri kommentar nedan innan du skickar in.',
+  freeTextLabel: 'Har du något mer du vill berätta om din upplevelse av [Produkten]?',
+  thankYouTitle: 'Frivillig kommentar & inskick',
+  thankYouText: 'Tack för att du tog dig tid att svara. Dina synpunkter hjälper oss att förbättra produkten.',
+  alreadyAnsweredTitle: 'Utvärdering av [Produkten]',
+  alreadyAnsweredText: 'Denna länk har redan använts för att registrera en utvärdering för [Produkten] och kan inte användas fler gånger.',
+};
+
 export interface SusSurvey {
   id: string;
   productId: string;
@@ -113,9 +125,14 @@ export interface SusSurvey {
   endCondition: 'date' | 'maxResponses';
   endDate?: string; // ISO date string
   maxResponses?: number;
+  introTitle?: string;
   introText?: string;
+  commentTitle?: string;
+  commentSubtitle?: string;
   freeTextLabel?: string;
+  thankYouTitle?: string;
   thankYouText?: string;
+  alreadyAnsweredTitle?: string;
   alreadyAnsweredText?: string;
   externalSurveyEnabled?: boolean;
   externalSurveyUrl?: string;

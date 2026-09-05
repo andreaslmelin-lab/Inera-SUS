@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, addDoc, updateDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { SusSurvey, SurveyRespondent, Product, SurveyTheme } from '../types';
+import { SusSurvey, SurveyRespondent, Product, SurveyTheme, DEFAULT_SURVEY_TEXTS } from '../types';
 import { 
   CheckCircle2, AlertCircle, Mail, ExternalLink, 
   Clock, Loader2
@@ -460,6 +460,14 @@ export default function PublicSurveyView({
     const mailtoSubject = encodeURIComponent(`SUS-mätning ${survey?.name || pName}`);
     const mailtoUrl = `mailto:ux@inera.se?subject=${mailtoSubject}`;
 
+    const alreadyTitle = (survey?.alreadyAnsweredTitle && survey.alreadyAnsweredTitle.trim())
+      ? survey.alreadyAnsweredTitle.replaceAll('[Produkten]', pName).replaceAll('[ProductName]', pName)
+      : DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle.replaceAll('[Produkten]', pName);
+
+    const alreadyText = (survey?.alreadyAnsweredText && survey.alreadyAnsweredText.trim())
+      ? survey.alreadyAnsweredText.replaceAll('[Produkten]', pName).replaceAll('[ProductName]', pName)
+      : DEFAULT_SURVEY_TEXTS.alreadyAnsweredText.replaceAll('[Produkten]', pName);
+
     return (
       <div 
         className="min-h-screen flex flex-col font-sans"
@@ -470,11 +478,11 @@ export default function PublicSurveyView({
         <main className="max-w-2xl mx-auto px-4 py-8 sm:py-12 w-full">
           <div className="bg-white p-8 sm:p-10 rounded-2xl border border-[#e5e1da] shadow-md">
             <h1 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: themeMeta.colors.heading }}>
-              Utvärdering av {pName}
+              {alreadyTitle}
             </h1>
 
             <div className="leading-relaxed space-y-4 mb-8 text-neutral-700 text-base">
-              <p>Denna länk har redan använts för att registrera en utvärdering för {pName} och kan inte användas fler gånger.</p>
+              <p>{alreadyText}</p>
             </div>
 
             <div className="rounded-xl border border-neutral-300 p-4 sm:p-5 flex items-center justify-between bg-white text-sm sm:text-base">
@@ -525,18 +533,20 @@ export default function PublicSurveyView({
   const mailtoSubject = encodeURIComponent(`SUS-mätning ${survey?.name || productName}`);
   const mailtoUrl = `mailto:ux@inera.se?subject=${mailtoSubject}`;
 
-  const defaultIntro = `Vi vill veta hur du upplevde att använda ${productName}. Enkäten består av tio påståenden. Utgå från din senaste användning av produkten när du svarar.`;
-  const displayIntro = survey?.introText
-    ? survey.introText.replaceAll('[Produkten]', productName)
-    : defaultIntro;
+  const formatSurveyText = (customText: string | undefined, defaultTemplate: string) => {
+    const textToUse = customText && customText.trim() ? customText : defaultTemplate;
+    return textToUse.replaceAll('[Produkten]', productName).replaceAll('[ProductName]', productName);
+  };
 
-  const defaultFreeLabel = `Har du något mer du vill berätta om din upplevelse av ${productName} (IDS)`;
-  const displayFreeLabel = survey?.freeTextLabel
-    ? survey.freeTextLabel.replaceAll('[Produkten]', productName)
-    : defaultFreeLabel;
+  const displayIntroTitle = formatSurveyText(survey?.introTitle, DEFAULT_SURVEY_TEXTS.introTitle);
+  const displayIntroText = formatSurveyText(survey?.introText, DEFAULT_SURVEY_TEXTS.introText);
 
-  const defaultThankYou = `Tack för att du tog dig tid att svara. Dina synpunkter hjälper oss att förbättra produkten.`;
-  const displayThankYou = survey?.thankYouText || defaultThankYou;
+  const displayCommentTitle = formatSurveyText(survey?.commentTitle, DEFAULT_SURVEY_TEXTS.commentTitle);
+  const displayCommentSubtitle = formatSurveyText(survey?.commentSubtitle, DEFAULT_SURVEY_TEXTS.commentSubtitle);
+  const displayFreeLabel = formatSurveyText(survey?.freeTextLabel, DEFAULT_SURVEY_TEXTS.freeTextLabel);
+
+  const displayThankYouTitle = formatSurveyText(survey?.thankYouTitle, DEFAULT_SURVEY_TEXTS.thankYouTitle);
+  const displayThankYouText = formatSurveyText(survey?.thankYouText, DEFAULT_SURVEY_TEXTS.thankYouText);
 
   return (
     <div 
@@ -561,12 +571,12 @@ export default function PublicSurveyView({
                 className="text-2xl sm:text-[28px] font-bold mb-4 leading-tight font-sans"
                 style={{ color: themeMeta.colors.heading }}
               >
-                Utvärdering av {productName}
+                {displayIntroTitle}
               </h1>
 
               {/* Ingress / Description */}
               <div className="text-base text-neutral-700 leading-relaxed mb-8">
-                <p>{displayIntro}</p>
+                <p>{displayIntroText}</p>
               </div>
 
               {/* Contact Questions Box */}
@@ -716,10 +726,10 @@ export default function PublicSurveyView({
                 className="text-2xl sm:text-[26px] font-bold mb-2 font-sans"
                 style={{ color: themeMeta.colors.heading }}
               >
-                Frivillig kommentar & inskick
+                {displayCommentTitle}
               </h2>
               <p className="text-sm sm:text-base text-neutral-700 mb-6 leading-relaxed">
-                Du har besvarat alla 10 påståenden för <strong>{productName}</strong>. Du kan lämna en valfri kommentar nedan innan du skickar in.
+                {displayCommentSubtitle}
               </p>
 
               {/* Free text input */}
@@ -824,12 +834,12 @@ export default function PublicSurveyView({
                 className="text-2xl sm:text-[28px] font-bold mb-3 text-center font-sans"
                 style={{ color: themeMeta.colors.heading }}
               >
-                Frivillig kommentar & inskick
+                {displayThankYouTitle}
               </h2>
 
               {/* Thank you text */}
               <p className="text-base text-neutral-700 leading-relaxed mb-8 max-w-md mx-auto text-center">
-                {displayThankYou}
+                {displayThankYouText}
               </p>
 
               {/* Option to proceed to external survey if enabled */}
