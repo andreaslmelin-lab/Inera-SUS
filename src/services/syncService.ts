@@ -242,7 +242,7 @@ export async function generateSusMetricsPayload() {
     // Normalize susResponses into standard response format
     const normalizedSusResponses = susResponses.map(sr => {
       const survey = surveyMap.get(sr.surveyId);
-      let matchedP = null;
+      let matchedP: any = null;
       const targetProdId = survey?.productId || sr.productId;
 
       if (targetProdId && productMap.has(targetProdId)) {
@@ -315,7 +315,7 @@ export async function generateSusMetricsPayload() {
     // Group responses by variantName mapped to official master catalog product names
     const variantMetricsMap: Record<string, { totalScore: number; count: number; productId: string; rounds: Map<string, any>; latestDate?: string }> = {};
     allResponses.forEach(r => {
-      let matchedProduct = null;
+      let matchedProduct: any = null;
       const rawName = (r.variantName || '').trim();
       const rawNameLower = rawName.toLowerCase();
       const normalizedRaw = rawName === 'Generell' || rawName === 'Other' || rawName === 'Övriga' ? 'Övriga' : rawName;
@@ -385,7 +385,7 @@ export async function generateSusMetricsPayload() {
     products.forEach(p => {
       const pNameLower = p.name.toLowerCase().trim();
       
-      let matchedData = null;
+      let matchedData: any = null;
       if (variantMetricsMap[p.name]) {
         matchedData = variantMetricsMap[p.name];
       } else {
@@ -539,7 +539,7 @@ export async function generateSusMetricsPayload() {
     });
 
     const events = allResponses.map(r => {
-      let matchedP = null;
+      let matchedP: any = null;
       const rawName = (r.variantName || '').trim();
       const rawNameLower = rawName.toLowerCase();
       const normalizedRaw = rawName === 'Generell' || rawName === 'Other' || rawName === 'Övriga' ? 'Övriga' : rawName;

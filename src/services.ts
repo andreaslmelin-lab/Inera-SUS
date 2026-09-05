@@ -17,67 +17,9 @@ import {
 import { db, handleFirestoreError, OperationType } from './firebase';
 import Papa from 'papaparse';
 import { calculateSusScore } from './lib/utils';
+import { Product, Variant, Measurement, ResponseData } from './types';
 
-export interface Product {
-  id: string;
-  name: string;
-  description?: string;
-  teamId?: string;
-  teamName?: string;
-  trainId?: string;
-  trainName?: string;
-  uxLead?: string;
-  rte?: string;
-  maturity?: number;
-  susScore?: number;
-  idsVersion?: string;
-  comment?: string;
-}
-
-export interface Variant {
-  id: string;
-  productId: string;
-  name: string;
-}
-
-export interface Measurement {
-  id: string;
-  productId: string;
-  date: Date;
-  uploadedBy: string;
-  fileName: string;
-  averageScore: number;
-  medianScore?: number;
-  responseCount: number;
-  variantScores?: Record<string, { 
-    score: number, 
-    median: number, 
-    count: number,
-    min?: number,
-    max?: number,
-    q1?: number,
-    q3?: number
-  }>;
-  stats?: {
-    min: number,
-    max: number,
-    q1: number,
-    q3: number
-  };
-}
-
-export interface ResponseData {
-  id: string;
-  measurementId: string;
-  productId: string;
-  variantName: string;
-  susScore: number;
-  answers: number[];
-  comment: string;
-  submitDate: Date;
-  startDate?: Date;
-  otherText?: string;
-}
+export type { Product, Variant, Measurement, ResponseData };
 
 export const ProductService = {
   async getProductsOnce(): Promise<Product[]> {

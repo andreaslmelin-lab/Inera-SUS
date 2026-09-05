@@ -29,6 +29,7 @@ import CatalogMappingView from './components/CatalogMappingView';
 import GrundstrukturView from './components/GrundstrukturView';
 import SusAdminView from './components/SusAdminView';
 import PublicSurveyView from './components/PublicSurveyView';
+import AdminView from './components/AdminView';
 import { CommentsSummaryCard } from './components/CommentsSummaryCard';
 import { synthesizeComments } from './utils/commentSummarizer';
 import ineraLogo from './Images/Inera logo 1.0 färg.svg';
@@ -235,7 +236,7 @@ const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
         <div className="flex justify-center mb-6">
           <img src={ineraLogo} alt="Inera Logotyp" className="h-12 w-auto" />
         </div>
-        <h1 className="text-2xl font-bold font-display text-inera-primary-40 mb-1">Inera SUS Analys</h1>
+        <h1 className="text-2xl font-bold font-display text-inera-primary-40 mb-1">SUS-analys</h1>
         <p className="text-sm text-inera-neutral-40 mb-8">
           {isForgotPassword 
             ? 'Återställ ditt lösenord' 
@@ -615,7 +616,8 @@ const UserProfileModal = ({
   );
 };
 
-const AdminView = ({ 
+// Old inline AdminView removed; using imported AdminView from components/AdminView
+const LegacyAdminView = ({ 
   activeAdminTab = 'users',
   uploadNode,
   onResetCatalog
@@ -3988,6 +3990,7 @@ export default function App() {
                 )}
                 <AdminView 
                   activeAdminTab={adminSubTab}
+                  onTabChange={(tab) => setAdminSubTab(tab)}
                   onResetCatalog={user?.email === 'andreas.l.melin@gmail.com' ? () => setShowResetConfirm(true) : undefined} 
                   uploadNode={(
                     <div className="card p-8 shadow-sm border-inera-secondary-90 bg-white">

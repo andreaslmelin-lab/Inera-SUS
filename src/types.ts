@@ -54,6 +54,51 @@ export interface Product {
   comment?: string;
 }
 
+export interface Variant {
+  id: string;
+  productId: string;
+  name: string;
+}
+
+export interface Measurement {
+  id: string;
+  productId: string;
+  date: Date;
+  uploadedBy: string;
+  fileName: string;
+  averageScore: number;
+  medianScore?: number;
+  responseCount: number;
+  variantScores?: Record<string, { 
+    score: number; 
+    median: number; 
+    count: number;
+    min?: number;
+    max?: number;
+    q1?: number;
+    q3?: number;
+  }>;
+  stats?: {
+    min: number;
+    max: number;
+    q1: number;
+    q3: number;
+  };
+}
+
+export interface ResponseData {
+  id: string;
+  measurementId: string;
+  productId: string;
+  variantName: string;
+  susScore: number;
+  answers: number[];
+  comment: string;
+  submitDate: Date;
+  startDate?: Date;
+  otherText?: string;
+}
+
 export type SurveyTheme = '1177_invanare' | '1177_vardpersonal' | 'inera_b2b' | 'inera_invanare';
 
 export interface SusSurvey {
