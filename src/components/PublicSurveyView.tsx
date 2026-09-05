@@ -460,13 +460,19 @@ export default function PublicSurveyView({
     const mailtoSubject = encodeURIComponent(`SUS-mätning ${survey?.name || pName}`);
     const mailtoUrl = `mailto:ux@inera.se?subject=${mailtoSubject}`;
 
-    const alreadyTitle = (survey?.alreadyAnsweredTitle && survey.alreadyAnsweredTitle.trim())
-      ? survey.alreadyAnsweredTitle.replaceAll('[Produkten]', pName).replaceAll('[ProductName]', pName)
-      : DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle.replaceAll('[Produkten]', pName);
+    const replacePlaceholders = (text: string) => text.replace(/\[(produkten|productname|produkt)\]/gi, pName);
 
-    const alreadyText = (survey?.alreadyAnsweredText && survey.alreadyAnsweredText.trim())
-      ? survey.alreadyAnsweredText.replaceAll('[Produkten]', pName).replaceAll('[ProductName]', pName)
-      : DEFAULT_SURVEY_TEXTS.alreadyAnsweredText.replaceAll('[Produkten]', pName);
+    const alreadyTitle = replacePlaceholders(
+      (survey?.alreadyAnsweredTitle && survey.alreadyAnsweredTitle.trim())
+        ? survey.alreadyAnsweredTitle
+        : DEFAULT_SURVEY_TEXTS.alreadyAnsweredTitle
+    );
+
+    const alreadyText = replacePlaceholders(
+      (survey?.alreadyAnsweredText && survey.alreadyAnsweredText.trim())
+        ? survey.alreadyAnsweredText
+        : DEFAULT_SURVEY_TEXTS.alreadyAnsweredText
+    );
 
     return (
       <div 
@@ -533,9 +539,14 @@ export default function PublicSurveyView({
   const mailtoSubject = encodeURIComponent(`SUS-mätning ${survey?.name || productName}`);
   const mailtoUrl = `mailto:ux@inera.se?subject=${mailtoSubject}`;
 
+  const replacePlaceholders = (text: string, pName: string) => {
+    if (!text) return '';
+    return text.replace(/\[(produkten|productname|produkt)\]/gi, pName);
+  };
+
   const formatSurveyText = (customText: string | undefined, defaultTemplate: string) => {
     const textToUse = customText && customText.trim() ? customText : defaultTemplate;
-    return textToUse.replaceAll('[Produkten]', productName).replaceAll('[ProductName]', productName);
+    return replacePlaceholders(textToUse, productName);
   };
 
   const displayIntroTitle = formatSurveyText(survey?.introTitle, DEFAULT_SURVEY_TEXTS.introTitle);
@@ -545,7 +556,10 @@ export default function PublicSurveyView({
   const displayCommentSubtitle = formatSurveyText(survey?.commentSubtitle, DEFAULT_SURVEY_TEXTS.commentSubtitle);
   const displayFreeLabel = formatSurveyText(survey?.freeTextLabel, DEFAULT_SURVEY_TEXTS.freeTextLabel);
 
-  const displayThankYouTitle = formatSurveyText(survey?.thankYouTitle, DEFAULT_SURVEY_TEXTS.thankYouTitle);
+  const thankYouTitleRaw = (survey?.thankYouTitle && survey.thankYouTitle.trim() && survey.thankYouTitle !== 'Frivillig kommentar & inskick')
+    ? survey.thankYouTitle
+    : DEFAULT_SURVEY_TEXTS.thankYouTitle;
+  const displayThankYouTitle = formatSurveyText(thankYouTitleRaw, DEFAULT_SURVEY_TEXTS.thankYouTitle);
   const displayThankYouText = formatSurveyText(survey?.thankYouText, DEFAULT_SURVEY_TEXTS.thankYouText);
 
   return (
@@ -807,26 +821,13 @@ export default function PublicSurveyView({
           {/* Steg 12: Tackskärm */}
           {step === 12 && (
             <div className="bg-white rounded-2xl border border-[#e5e1da] shadow-md p-8 sm:p-12 text-center">
-              {/* Green Success Check Circle */}
-              <div 
-                className="w-14 h-14 rounded-full border-2 mx-auto mb-4 flex items-center justify-center"
-                style={{ 
-                  borderColor: themeMeta.colors.successCheck,
-                  color: themeMeta.colors.successCheck
-                }}
-              >
-                <CheckCircle2 size={32} />
-              </div>
-
-              {/* Product context box */}
-              <div 
-                className="inline-block border px-3 py-0.5 text-xs sm:text-sm font-normal mb-4 bg-white"
-                style={{ 
-                  borderColor: themeMeta.header.productTagBorder, 
-                  color: themeMeta.header.productTagText 
-                }}
-              >
-                {productName}
+              {/* Green Success Check Icon */}
+              <div className="mx-auto mb-4 flex justify-center">
+                <CheckCircle2 
+                  size={56} 
+                  style={{ color: themeMeta.colors.successCheck }}
+                  strokeWidth={1.75}
+                />
               </div>
 
               {/* Main Heading in theme color */}

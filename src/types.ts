@@ -107,9 +107,9 @@ export const DEFAULT_SURVEY_TEXTS = {
   commentTitle: 'Frivillig kommentar & inskick',
   commentSubtitle: 'Du har besvarat alla 10 påståenden för [Produkten]. Du kan lämna en valfri kommentar nedan innan du skickar in.',
   freeTextLabel: 'Har du något mer du vill berätta om din upplevelse av [Produkten]?',
-  thankYouTitle: 'Frivillig kommentar & inskick',
+  thankYouTitle: 'Tack för dina svar!',
   thankYouText: 'Tack för att du tog dig tid att svara. Dina synpunkter hjälper oss att förbättra produkten.',
-  alreadyAnsweredTitle: 'Utvärdering av [Produkten]',
+  alreadyAnsweredTitle: 'Enkäten är redan besvarad',
   alreadyAnsweredText: 'Denna länk har redan använts för att registrera en utvärdering för [Produkten] och kan inte användas fler gånger.',
 };
 
