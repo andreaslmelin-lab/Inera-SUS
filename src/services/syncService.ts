@@ -58,141 +58,201 @@ function isNameMatch(a: string, b: string): boolean {
   return false;
 }
 
-export async function pushMetricsToAdminDashboard(payload: {
-  source: "inera-sus";
-  sourceKey?: "inera-sus";
-  timestamp?: string;
-  organization?: string;
-  metrics: {
-    score: number;
-    grade?: string;
-    evaluationsCount: number;
-    responseRate: number;
-    productsCount?: number;
-    products?: Array<any>;
-  };
-  granularData?: {
-    individuals?: Array<any>;
-    teams?: Array<any>;
-    products?: Array<any>;
-    events?: Array<any>;
-  };
-}) {
+export const DEFAULT_INERA_SUS_TOKEN = 'inera_ux_token_11am0nao';
+export const DEFAULT_INERA_SUS_ENDPOINT = 'https://inera-ux-dashboard.vercel.app/api/sync-metrics';
+
+export async function pushMetricsToAdminDashboard(payload: any): Promise<{ success: boolean; data?: any; error?: string; details?: any }> {
   try {
     const safeNumber = (val: any, fallback = 0) => {
       const num = Number(val);
       return (val === undefined || val === null || isNaN(num)) ? fallback : num;
     };
 
-    const body = {
-      source: "inera-sus",
-      source_key: "inera-sus",
-      timestamp: payload.timestamp || new Date().toISOString(),
-      organization: payload.organization || "Inera AB",
-      metrics: {
-        score: safeNumber(payload.metrics.score, 75),
-        grade: payload.metrics.grade || "",
-        evaluationsCount: Math.round(safeNumber(payload.metrics.evaluationsCount, 0)),
-        responseRate: safeNumber(payload.metrics.responseRate, 100),
-        productsCount: safeNumber(payload.metrics.productsCount || payload.granularData?.products?.length, 0),
-        products: (payload.metrics.products || payload.granularData?.products || []).map((p: any) => ({
-          productId: String(p.productId || p.product_id || p.id || ''),
-          productName: String(p.productName || p.product_name || p.name || ''),
-          susScore: safeNumber(p.susScore || p.sus_score || p.score, 0),
-          responses: Math.round(safeNumber(p.responses || p.responsesCount || 0))
-        }))
-      },
-      granularData: {
-        individuals: payload.granularData?.individuals || [],
-        teams: payload.granularData?.teams || [],
-        products: (payload.granularData?.products || []).map((p: any) => ({
-          productId: String(p.productId || p.product_id || p.id || ''),
-          productName: String(p.productName || p.product_name || p.name || ''),
-          susScore: safeNumber(p.susScore || p.sus_score, 0),
-          responses: Math.round(safeNumber(p.responses || p.responsesCount, 0)),
-          roundId: String(p.roundId || p.round_id || p.surveyId || ''),
-          roundName: String(p.roundName || p.round_name || ''),
-          roundStatus: String(p.roundStatus || p.round_status || ''),
-          startDate: String(p.startDate || p.start_date || ''),
-          endDate: String(p.endDate || p.end_date || ''),
-          date: String(p.date || new Date().toISOString()),
-          // Backward compatibility fields
-          product_id: String(p.productId || p.product_id || p.id || ''),
-          product_name: String(p.productName || p.product_name || p.name || ''),
-          sus_score: safeNumber(p.susScore || p.sus_score, 0),
-          round_id: String(p.roundId || p.round_id || p.surveyId || ''),
-          round_name: String(p.roundName || p.round_name || ''),
-          round_status: String(p.roundStatus || p.round_status || '')
-        })),
-        events: (payload.granularData?.events || []).map((ev: any) => ({
-          eventId: String(ev.eventId || ev.event_id || ev.id || ''),
-          timestamp: String(ev.timestamp || new Date().toISOString()),
+    let body: any;
+    if (payload?.source === "inera-sus" && payload.metrics) {
+      body = {
+        source: "inera-sus",
+        source_key: "inera-sus",
+        timestamp: payload.timestamp || new Date().toISOString(),
+        organization: payload.organization || "Inera AB",
+        metrics: {
+          score: safeNumber(payload.metrics.score, 75),
+          grade: payload.metrics.grade || "",
+          evaluationsCount: Math.round(safeNumber(payload.metrics.evaluationsCount, 0)),
+          responseRate: safeNumber(payload.metrics.responseRate, 100),
+          productsCount: safeNumber(payload.metrics.productsCount || payload.granularData?.products?.length, 0),
+          products: (payload.metrics.products || payload.granularData?.products || []).map((p: any) => ({
+            productId: String(p.productId || p.product_id || p.id || ''),
+            productName: String(p.productName || p.product_name || p.name || ''),
+            susScore: safeNumber(p.susScore || p.sus_score || p.score, 0),
+            responses: Math.round(safeNumber(p.responses || p.responsesCount || 0))
+          }))
+        },
+        granularData: {
+          individuals: payload.granularData?.individuals || [],
+          teams: payload.granularData?.teams || [],
+          products: (payload.granularData?.products || []).map((p: any) => ({
+            productId: String(p.productId || p.product_id || p.id || ''),
+            productName: String(p.productName || p.product_name || p.name || ''),
+            susScore: safeNumber(p.susScore || p.sus_score, 0),
+            responses: Math.round(safeNumber(p.responses || p.responsesCount, 0)),
+            roundId: String(p.roundId || p.round_id || p.surveyId || ''),
+            roundName: String(p.roundName || p.round_name || ''),
+            roundStatus: String(p.roundStatus || p.round_status || ''),
+            startDate: String(p.startDate || p.start_date || ''),
+            endDate: String(p.endDate || p.end_date || ''),
+            date: String(p.date || new Date().toISOString()),
+            // Backward compatibility fields
+            product_id: String(p.productId || p.product_id || p.id || ''),
+            product_name: String(p.productName || p.product_name || p.name || ''),
+            sus_score: safeNumber(p.susScore || p.sus_score, 0),
+            round_id: String(p.roundId || p.round_id || p.surveyId || ''),
+            round_name: String(p.roundName || p.round_name || ''),
+            round_status: String(p.roundStatus || p.round_status || '')
+          })),
+          events: (payload.granularData?.events || []).map((ev: any) => ({
+            eventId: String(ev.eventId || ev.event_id || ev.id || ''),
+            timestamp: String(ev.timestamp || new Date().toISOString()),
+            eventType: String(ev.eventType || ev.event_type || 'SUS_SURVEY_COMPLETED'),
+            targetProductId: String(ev.targetProductId || ev.target_product_id || ev.productId || ''),
+            productName: String(ev.productName || ev.product_name || ev.variantName || ''),
+            scoreGiven: safeNumber(ev.scoreGiven || ev.score_given || ev.susScore || ev.sus_score, 0)
+          }))
+        }
+      };
+    } else {
+      body = {
+        source: "inera-sus",
+        source_key: "inera-sus",
+        timestamp: new Date().toISOString(),
+        organization: "Inera AB",
+        metrics: payload?.metrics || payload || {},
+        events: payload?.events || (payload?.measurements || []).map((ev: any) => ({
+          eventId: String(ev.eventId || ev.id || Math.random().toString(36).substring(2, 9)),
+          timestamp: ev.timestamp || new Date().toISOString(),
           eventType: String(ev.eventType || ev.event_type || 'SUS_SURVEY_COMPLETED'),
           targetProductId: String(ev.targetProductId || ev.target_product_id || ev.productId || ''),
           productName: String(ev.productName || ev.product_name || ev.variantName || ''),
           scoreGiven: safeNumber(ev.scoreGiven || ev.score_given || ev.susScore || ev.sus_score, 0)
         }))
-      }
-    };
+      };
+    }
 
     const savedEndpoint = typeof window !== 'undefined' ? window.localStorage.getItem('inera_sus_sync_endpoint') : null;
-    const endpointToUse = savedEndpoint || 'https://inera-ux-dashboard.vercel.app/api/sync-metrics';
+    const endpointToUse = (savedEndpoint?.trim() && savedEndpoint.trim() !== 'undefined' && savedEndpoint.trim() !== 'null') 
+      ? savedEndpoint.trim() 
+      : DEFAULT_INERA_SUS_ENDPOINT;
 
     const savedToken = typeof window !== 'undefined' ? window.localStorage.getItem('inera_sus_sync_token') : null;
-    const tokenToUse = savedToken || 'inera_ux_token_11am0nao';
+    let tokenToUse = (savedToken?.trim() && savedToken.trim() !== 'undefined' && savedToken.trim() !== 'null') 
+      ? savedToken.trim() 
+      : DEFAULT_INERA_SUS_TOKEN;
 
     let responseData: any = {};
     let isSuccess = false;
     let proxyFailed = false;
 
-    try {
+    const executeProxyCall = async (token: string) => {
       const response = await fetch("/api/sync-metrics", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-API-Token": tokenToUse,
+          "X-API-Token": token,
           "X-Sync-Endpoint": endpointToUse
         },
         body: JSON.stringify(body),
       });
 
       const responseText = await response.text();
+      let parsed: any;
       try {
-        responseData = JSON.parse(responseText);
-        isSuccess = response.ok && responseData.success !== false;
+        parsed = JSON.parse(responseText);
       } catch (e) {
-        // Not JSON, likely Vercel 404 fallback page
-        proxyFailed = true;
+        throw new Error("Invalid proxy response");
+      }
+      return { ok: response.ok, data: parsed };
+    };
+
+    try {
+      const res = await executeProxyCall(tokenToUse);
+      responseData = res.data;
+      isSuccess = res.ok && responseData.success !== false;
+
+      // If failed due to token and we didn't use the default token, retry with default token
+      const isAuthError = !isSuccess && (
+        responseData.error?.includes('Unauthorized') || 
+        responseData.error?.includes('X-API-Token') ||
+        responseData.message?.includes('Unauthorized')
+      );
+
+      if (isAuthError && tokenToUse !== DEFAULT_INERA_SUS_TOKEN) {
+        console.warn("Synkronisering nekades med sparad token. Försöker med standardtoken...");
+        try {
+          const retryRes = await executeProxyCall(DEFAULT_INERA_SUS_TOKEN);
+          if (retryRes.ok && retryRes.data.success !== false) {
+            responseData = retryRes.data;
+            isSuccess = true;
+            tokenToUse = DEFAULT_INERA_SUS_TOKEN;
+            if (typeof window !== 'undefined') {
+              window.localStorage.setItem('inera_sus_sync_token', DEFAULT_INERA_SUS_TOKEN);
+            }
+          }
+        } catch {}
       }
     } catch (e) {
       proxyFailed = true;
     }
 
     if (proxyFailed) {
-      console.warn("Proxy-anropet till /api/sync-metrics misslyckades (troligen pga statisk miljö som Vercel). Försöker anropa endpoint direkt...");
-      try {
+      console.warn("Proxy-anropet till /api/sync-metrics misslyckades. Försöker anropa endpoint direkt...");
+      const executeDirectCall = async (token: string) => {
         const directResponse = await fetch(endpointToUse, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "X-API-Token": tokenToUse,
-            "x-api-token": tokenToUse
+            "X-API-Token": token
           },
           body: JSON.stringify(body)
         });
-        
         const directText = await directResponse.text();
+        let parsed: any;
         try {
-          responseData = JSON.parse(directText);
-          isSuccess = directResponse.ok && responseData.success !== false;
-        } catch (e) {
-          responseData = { error: 'Kunde inte läsa svar från mottagande server (ej giltig JSON). Kontrollera endpoint URL.' };
-          isSuccess = false;
+          parsed = JSON.parse(directText);
+        } catch {
+          parsed = { message: directText };
+        }
+        return { ok: directResponse.ok, data: parsed };
+      };
+
+      try {
+        const directRes = await executeDirectCall(tokenToUse);
+        responseData = directRes.data;
+        isSuccess = directRes.ok && responseData.success !== false;
+
+        const isAuthError = !isSuccess && (
+          responseData.error?.includes('Unauthorized') || 
+          responseData.error?.includes('X-API-Token') ||
+          responseData.message?.includes('Unauthorized')
+        );
+
+        if (isAuthError && tokenToUse !== DEFAULT_INERA_SUS_TOKEN) {
+          console.warn("Direktanrop nekades med sparad token. Försöker med standardtoken...");
+          try {
+            const retryRes = await executeDirectCall(DEFAULT_INERA_SUS_TOKEN);
+            if (retryRes.ok && retryRes.data.success !== false) {
+              responseData = retryRes.data;
+              isSuccess = true;
+              tokenToUse = DEFAULT_INERA_SUS_TOKEN;
+              if (typeof window !== 'undefined') {
+                window.localStorage.setItem('inera_sus_sync_token', DEFAULT_INERA_SUS_TOKEN);
+              }
+            }
+          } catch {}
         }
       } catch (directErr: any) {
         return { 
           success: false, 
-          error: "Misslyckades att synka. Appen körs på en statisk host (t.ex. Vercel) som saknar backend API:er, och det direkta anropet blockerades (troligen pga CORS).",
+          error: "Misslyckades att synka. Det direkta anropet blockerades (troligen pga nätverk eller CORS).",
           details: { message: directErr.message }
         };
       }
@@ -601,7 +661,7 @@ export async function generateSusMetricsPayload() {
   }
 }
 
-export async function triggerSusMetricsSync() {
+export async function triggerSusMetricsSync(): Promise<{ success: boolean; data?: any; error?: string; details?: any }> {
   try {
     const payload = await generateSusMetricsPayload();
     return await pushMetricsToAdminDashboard(payload);

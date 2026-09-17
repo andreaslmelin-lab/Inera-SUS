@@ -29,7 +29,7 @@
         "createdAt": { "type": "string" },
         "createdBy": { "type": "string" }
       },
-      "required": ["code", "email", "role", "status"]
+      "required": ["code", "role", "status"]
     },
     "Train": {
       "title": "Train",

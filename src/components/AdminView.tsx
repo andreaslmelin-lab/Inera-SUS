@@ -51,7 +51,7 @@ const AdminView = ({
     { id: 'grundstruktur', label: 'Inera Grundstruktur', icon: Layers, desc: 'Tåg, team & produkter' },
   ];
 
-  const [usersSubView, setUsersSubView] = useState<'users' | 'invitations'>('users');
+  const [usersSubView, setUsersSubView] = useState<'all' | 'users' | 'invitations'>('all');
   const [users, setUsers] = useState<any[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +61,11 @@ const AdminView = ({
   // Modals state
   const [userToDelete, setUserToDelete] = useState<any | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  // Invitation deletion modal state
+  const [invitationToDelete, setInvitationToDelete] = useState<Invitation | null>(null);
+  const [isDeletingInvitation, setIsDeletingInvitation] = useState(false);
+  const [deleteAssociatedUserToo, setDeleteAssociatedUserToo] = useState(false);
 
   const [userToEditName, setUserToEditName] = useState<any | null>(null);
   const [editDisplayName, setEditDisplayName] = useState('');
@@ -158,6 +163,19 @@ const AdminView = ({
     setIsDeletingUser(true);
     try {
       await deleteDoc(doc(db, 'users', userToDelete.id));
+
+      // Also clean up any associated invitation if one was used by this user
+      if (userToDelete.inviteCode) {
+        const matchingInv = invitations.find(inv => inv.code === userToDelete.inviteCode);
+        if (matchingInv) {
+          try {
+            await deleteDoc(doc(db, 'invitations', matchingInv.id));
+          } catch (e) {
+            console.warn('Could not delete associated invitation:', e);
+          }
+        }
+      }
+
       setUserToDelete(null);
       await fetchUsersAndInvitations();
       setSuccessMsg('Användaren raderades permanent.');
@@ -252,15 +270,40 @@ const AdminView = ({
     }
   };
 
-  const handleDeleteInvitation = async (invId: string) => {
-    if (!confirm('Är du säker på att du vill återkalla/radera denna inbjudan?')) return;
+  const handleDeleteInvitation = (inv: Invitation) => {
+    setInvitationToDelete(inv);
+    setDeleteAssociatedUserToo(false);
+  };
+
+  const executeDeleteInvitation = async () => {
+    if (!invitationToDelete) return;
+    setIsDeletingInvitation(true);
+    setError('');
     try {
-      await deleteDoc(doc(db, 'invitations', invId));
-      setSuccessMsg('Inbjudan har tagits bort.');
+      // 1. Delete invitation document from Firestore
+      await deleteDoc(doc(db, 'invitations', invitationToDelete.id));
+
+      // 2. If opted to also delete associated user account
+      if (deleteAssociatedUserToo) {
+        const matchedUser = users.find(u => 
+          (invitationToDelete.usedBy && u.id === invitationToDelete.usedBy) ||
+          (invitationToDelete.code && u.inviteCode === invitationToDelete.code) ||
+          (invitationToDelete.email && u.email?.toLowerCase() === invitationToDelete.email?.toLowerCase())
+        );
+        if (matchedUser && !isProtectedAdmin(matchedUser.email)) {
+          await deleteDoc(doc(db, 'users', matchedUser.id));
+        }
+      }
+
+      setSuccessMsg(`Inbjudan för ${invitationToDelete.name || invitationToDelete.email || invitationToDelete.code} har raderats.`);
       setTimeout(() => setSuccessMsg(''), 4000);
+      setInvitationToDelete(null);
+      setDeleteAssociatedUserToo(false);
       await fetchUsersAndInvitations();
     } catch (err: any) {
       setError(err.message || 'Kunde inte radera inbjudan');
+    } finally {
+      setIsDeletingInvitation(false);
     }
   };
 
@@ -413,7 +456,20 @@ const AdminView = ({
             </div>
 
             {/* Sub-view toggle tabs */}
-            <div className="flex items-center gap-2 mb-6 border-b border-inera-secondary-90 pb-2">
+            <div className="flex items-center gap-2 mb-6 border-b border-inera-secondary-90 pb-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setUsersSubView('all')}
+                className={cn(
+                  "px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-2",
+                  usersSubView === 'all' 
+                    ? "bg-inera-primary-40 text-white shadow-xs" 
+                    : "text-inera-neutral-30 hover:bg-inera-secondary-95"
+                )}
+              >
+                <Layers size={14} />
+                <span>Alla ({users.length + invitations.length})</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setUsersSubView('users')}
@@ -425,7 +481,7 @@ const AdminView = ({
                 )}
               >
                 <Users size={14} />
-                <span>Användare ({users.length})</span>
+                <span>Registrerade användare ({users.length})</span>
               </button>
               <button
                 type="button"
@@ -438,183 +494,46 @@ const AdminView = ({
                 )}
               >
                 <Key size={14} />
-                <span>Inbjudningskoder ({invitations.length})</span>
+                <span>Inbjudna användare & koder ({invitations.length})</span>
               </button>
             </div>
 
             {error && <div className="text-inera-error-40 mb-4 bg-inera-error-95 border-inera-error-40 border p-4 rounded-lg text-sm">{error}</div>}
             {successMsg && <div className="text-inera-success-40 mb-4 bg-inera-success-95 border-inera-success-40 border p-4 rounded-lg flex items-center gap-2 text-sm"><CheckCircle2 size={18} /><span>{successMsg}</span></div>}
             
-            {usersSubView === 'users' ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[760px]">
-                  <thead>
-                    <tr className="border-b border-inera-secondary-90 text-xs font-bold text-inera-neutral-40 uppercase tracking-wider">
-                      <th className="pb-3 px-2">Visningsnamn</th>
-                      <th className="pb-3 px-2">E-postadress</th>
-                      <th className="pb-3 px-2">Roll & Behörighet</th>
-                      <th className="pb-3 px-2">Senast inloggad</th>
-                      <th className="pb-3 px-2">Status</th>
-                      <th className="pb-3 px-2 text-right">Åtgärder</th>
-                    </tr>
-                  </thead>
-                  <motion.tbody layout>
-                    <AnimatePresence mode="popLayout">
-                    {users.map((u) => {
-                      const isMainAdmin = isProtectedAdmin(u.email);
-                      const currentRole: UserRole = isMainAdmin ? 'admin' : (u.role || 'viewer');
-
-                      return (
-                        <motion.tr 
-                          key={u.id} 
-                          layout
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className="border-b border-inera-secondary-95 last:border-0 hover:bg-inera-secondary-95/50 text-sm"
-                        >
-                          <td className="py-3 px-2 font-medium text-inera-neutral-10">
-                            <div className="flex items-center gap-2">
-                              <span>{u.displayName || 'Ej angivet'}</span>
-                              <button
-                                onClick={() => {
-                                  setUserToEditName(u);
-                                  setEditDisplayName(u.displayName || '');
-                                }}
-                                className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
-                                title="Redigera visningsnamn"
-                              >
-                                <Edit3 size={14} />
-                              </button>
-                            </div>
-                          </td>
-                          <td className="py-3 px-2 text-inera-neutral-20">
-                            <div className="flex items-center gap-1.5">
-                              <span>{u.email}</span>
-                              {isMainAdmin && (
-                                <span className="text-[10px] bg-inera-primary-40/10 text-inera-primary-40 px-1.5 py-0.2 rounded font-bold uppercase tracking-wider" title="Huvudadministratör - Kan inte tas bort">
-                                  Huvudadministratör
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-3 px-2">
-                            <div className="flex items-center gap-1.5">
-                              <span className={cn(
-                                "px-2.5 py-0.5 rounded-full text-xs font-bold border",
-                                currentRole === 'admin' 
-                                  ? "bg-inera-primary-40/10 text-inera-primary-40 border-inera-primary-40/30"
-                                  : currentRole === 'editor'
-                                  ? "bg-inera-accent-40/10 text-inera-accent-40 border-inera-accent-40/30"
-                                  : "bg-inera-secondary-90 text-inera-neutral-30 border-inera-secondary-90"
-                              )}>
-                                {currentRole === 'admin' ? 'Administratör' : currentRole === 'editor' ? 'Redaktör' : 'Läsbehörig'}
-                              </span>
-
-                              {!isMainAdmin && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setUserToEditRole(u);
-                                    setSelectedNewRole(currentRole);
-                                  }}
-                                  className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
-                                  title="Ändra roll och behörighet"
-                                >
-                                  <UserCog size={14} />
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-3 px-2 text-xs text-inera-neutral-40">
-                            {u.lastLoggedIn ? format(u.lastLoggedIn.toDate ? u.lastLoggedIn.toDate() : new Date(u.lastLoggedIn.seconds * 1000), 'yyyy-MM-dd HH:mm') : 'Aldrig'}
-                          </td>
-                          <td className="py-3 px-2">
-                            {u.isBlocked ? (
-                              <span className="bg-inera-error-95 text-inera-error-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-error-40">Blockerad</span>
-                            ) : u.mustChangePassword ? (
-                              <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-amber-300 flex items-center gap-1 w-max">
-                                <Lock size={10} /> Måste byta lösenord
-                              </span>
-                            ) : (
-                              <span className="bg-inera-success-95 text-inera-success-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-success-40">Aktiv</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-2 text-right">
-                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                              <button
-                                onClick={() => {
-                                  setUserToChangePassword(u);
-                                  setAdminNewPassword('');
-                                  setForceChangeOnLogin(true);
-                                }}
-                                className="btn btn--xs btn--secondary flex items-center gap-1"
-                                title="Byt lösenord för användaren"
-                              >
-                                <Key size={13} />
-                                Lösenord
-                              </button>
-                              
-                              {!isMainAdmin && (
-                                <>
-                                  <button 
-                                    onClick={() => toggleBlock(u.id, !!u.isBlocked, u.email)}
-                                    className={cn("btn btn--xs", u.isBlocked ? "btn--secondary" : "btn--tertiary")}
-                                    title={u.isBlocked ? "Avblockera konto" : "Blockera konto"}
-                                  >
-                                    {u.isBlocked ? 'Avblockera' : 'Blockera'}
-                                  </button>
-                                  <button 
-                                    onClick={() => setUserToDelete(u)}
-                                    className="btn btn--xs btn--destructive flex items-center gap-1"
-                                    title="Radera användare"
-                                  >
-                                    <Trash2 size={13} />
-                                    Radera
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </motion.tr>
-                      );
-                    })}
-                    </AnimatePresence>
-                  </motion.tbody>
-                </table>
-              </div>
-            ) : (
-              /* Invitations Table */
-              <div className="overflow-x-auto">
-                {invitations.length === 0 ? (
-                  <div className="p-8 text-center border-2 border-dashed border-inera-secondary-90 rounded-xl">
-                    <Key size={32} className="mx-auto text-inera-neutral-40 mb-3" />
-                    <p className="text-inera-neutral-30 font-medium mb-1">Inga skapade inbjudningar</p>
-                    <p className="text-xs text-inera-neutral-40 mb-4">Skapa en inbjudningskod för att bjuda in nya användare med specifik behörighet.</p>
-                    <button type="button" onClick={openNewInviteModal} className="btn btn--s btn--primary">
-                      Bjud in användare
-                    </button>
+            {/* 1. Registered Users Table */}
+            {(usersSubView === 'all' || usersSubView === 'users') && (
+              <div className="space-y-3 mb-6">
+                {usersSubView === 'all' && (
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex items-center gap-2">
+                      <Users size={17} className="text-inera-primary-40" />
+                      <h3 className="text-sm font-bold text-inera-neutral-10">Registrerade användare ({users.length})</h3>
+                    </div>
                   </div>
-                ) : (
-                  <table className="w-full text-left border-collapse min-w-[760px]">
+                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[850px]">
                     <thead>
                       <tr className="border-b border-inera-secondary-90 text-xs font-bold text-inera-neutral-40 uppercase tracking-wider">
+                        <th className="pb-3 px-2">Visningsnamn</th>
+                        <th className="pb-3 px-2">E-postadress</th>
                         <th className="pb-3 px-2">Inbjudningskod</th>
-                        <th className="pb-3 px-2">Mottagare & E-post</th>
-                        <th className="pb-3 px-2">Tilldelad Roll</th>
-                        <th className="pb-3 px-2">Skapad datum</th>
+                        <th className="pb-3 px-2">Roll & Behörighet</th>
+                        <th className="pb-3 px-2">Senast inloggad</th>
                         <th className="pb-3 px-2">Status</th>
                         <th className="pb-3 px-2 text-right">Åtgärder</th>
                       </tr>
                     </thead>
                     <motion.tbody layout>
                       <AnimatePresence mode="popLayout">
-                      {invitations.map((inv) => {
-                        const regLink = typeof window !== 'undefined' ? `${window.location.origin}?invite=${encodeURIComponent(inv.code)}` : `?invite=${inv.code}`;
+                      {users.map((u) => {
+                        const isMainAdmin = isProtectedAdmin(u.email);
+                        const currentRole: UserRole = isMainAdmin ? 'admin' : (u.role || 'viewer');
+
                         return (
                           <motion.tr 
-                            key={inv.id} 
+                            key={u.id} 
                             layout
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -622,66 +541,126 @@ const AdminView = ({
                             transition={{ duration: 0.2 }}
                             className="border-b border-inera-secondary-95 last:border-0 hover:bg-inera-secondary-95/50 text-sm"
                           >
-                            <td className="py-3 px-2 font-mono font-bold text-inera-primary-40">
+                            <td className="py-3 px-2 font-medium text-inera-neutral-10">
                               <div className="flex items-center gap-2">
-                                <span className="bg-inera-secondary-95 px-2 py-0.5 rounded border border-inera-secondary-90">{inv.code}</span>
+                                <span>{u.displayName || 'Ej angivet'}</span>
                                 <button
-                                  type="button"
-                                  onClick={() => copyToClipboard(inv.code, `code-${inv.id}`)}
+                                  onClick={() => {
+                                    setUserToEditName(u);
+                                    setEditDisplayName(u.displayName || '');
+                                  }}
                                   className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
-                                  title="Kopiera inbjudningskod"
+                                  title="Redigera visningsnamn"
                                 >
-                                  {copiedCodeId === `code-${inv.id}` ? <Check size={14} className="text-inera-success-40" /> : <Copy size={14} />}
+                                  <Edit3 size={14} />
                                 </button>
                               </div>
                             </td>
                             <td className="py-3 px-2 text-inera-neutral-20">
-                              <div className="leading-tight">
-                                <div className="font-medium text-inera-neutral-10">{inv.name || 'Öppen för alla'}</div>
-                                {inv.email && <div className="text-xs text-inera-neutral-40">{inv.email}</div>}
+                              <div className="flex items-center gap-1.5">
+                                <span>{u.email}</span>
+                                {isMainAdmin && (
+                                  <span className="text-[10px] bg-inera-primary-40/10 text-inera-primary-40 px-1.5 py-0.2 rounded font-bold uppercase tracking-wider" title="Huvudadministratör - Kan inte tas bort">
+                                    Huvudadministratör
+                                  </span>
+                                )}
                               </div>
                             </td>
+                            <td className="py-3 px-2 font-mono text-xs">
+                              {u.inviteCode ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="bg-inera-secondary-95 px-2 py-0.5 rounded border border-inera-secondary-90 font-bold text-inera-primary-40">
+                                    {u.inviteCode}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(u.inviteCode, `user-code-${u.id}`)}
+                                    className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
+                                    title="Kopiera inbjudningskod"
+                                  >
+                                    {copiedCodeId === `user-code-${u.id}` ? <Check size={13} className="text-inera-success-40" /> : <Copy size={13} />}
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-inera-neutral-40 text-xs italic">-</span>
+                              )}
+                            </td>
                             <td className="py-3 px-2">
-                              <span className={cn(
-                                "px-2.5 py-0.5 rounded-full text-xs font-bold border",
-                                inv.role === 'admin' 
-                                  ? "bg-inera-primary-40/10 text-inera-primary-40 border-inera-primary-40/30"
-                                  : inv.role === 'editor'
-                                  ? "bg-inera-accent-40/10 text-inera-accent-40 border-inera-accent-40/30"
-                                  : "bg-inera-secondary-90 text-inera-neutral-30 border-inera-secondary-90"
-                              )}>
-                                {inv.role === 'admin' ? 'Administratör' : inv.role === 'editor' ? 'Redaktör' : 'Läsbehörig'}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className={cn(
+                                  "px-2.5 py-0.5 rounded-full text-xs font-bold border",
+                                  currentRole === 'admin' 
+                                    ? "bg-inera-primary-40/10 text-inera-primary-40 border-inera-primary-40/30"
+                                    : currentRole === 'editor'
+                                    ? "bg-inera-accent-40/10 text-inera-accent-40 border-inera-accent-40/30"
+                                    : "bg-inera-secondary-90 text-inera-neutral-30 border-inera-secondary-90"
+                                )}>
+                                  {currentRole === 'admin' ? 'Administratör' : currentRole === 'editor' ? 'Redaktör' : 'Läsbehörig'}
+                                </span>
+
+                                {!isMainAdmin && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setUserToEditRole(u);
+                                      setSelectedNewRole(currentRole);
+                                    }}
+                                    className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
+                                    title="Ändra roll och behörighet"
+                                  >
+                                    <UserCog size={14} />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                             <td className="py-3 px-2 text-xs text-inera-neutral-40">
-                              {inv.createdAt ? format(new Date(inv.createdAt), 'yyyy-MM-dd HH:mm') : '-'}
+                              {u.lastLoggedIn ? format(u.lastLoggedIn.toDate ? u.lastLoggedIn.toDate() : new Date(u.lastLoggedIn.seconds * 1000), 'yyyy-MM-dd HH:mm') : 'Aldrig'}
                             </td>
                             <td className="py-3 px-2">
-                              {inv.status === 'used' ? (
-                                <span className="bg-inera-secondary-90 text-inera-neutral-40 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-secondary-90">Använd</span>
+                              {u.isBlocked ? (
+                                <span className="bg-inera-error-95 text-inera-error-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-error-40">Blockerad</span>
+                              ) : u.mustChangePassword ? (
+                                <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-amber-300 flex items-center gap-1 w-max">
+                                  <Lock size={10} /> Måste byta lösenord
+                                </span>
                               ) : (
                                 <span className="bg-inera-success-95 text-inera-success-50 px-2 py-0.5 rounded text-xs font-bold uppercase border border-inera-success-40">Aktiv</span>
                               )}
                             </td>
                             <td className="py-3 px-2 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
+                              <div className="flex items-center justify-end gap-1.5 flex-wrap">
                                 <button
-                                  type="button"
-                                  onClick={() => copyToClipboard(regLink, `link-${inv.id}`)}
+                                  onClick={() => {
+                                    setUserToChangePassword(u);
+                                    setAdminNewPassword('');
+                                    setForceChangeOnLogin(true);
+                                  }}
                                   className="btn btn--xs btn--secondary flex items-center gap-1"
-                                  title="Kopiera direktlänk för registrering"
+                                  title="Byt lösenord för användaren"
                                 >
-                                  {copiedCodeId === `link-${inv.id}` ? <Check size={12} className="text-inera-success-40" /> : <ExternalLink size={12} />}
-                                  {copiedCodeId === `link-${inv.id}` ? 'Kopierad länk' : 'Kopiera länk'}
+                                  <Key size={13} />
+                                  Lösenord
                                 </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteInvitation(inv.id)}
-                                  className="btn btn--xs btn--destructive flex items-center gap-1"
-                                  title="Ta bort inbjudan"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
+                                
+                                {!isMainAdmin && (
+                                  <>
+                                    <button 
+                                      onClick={() => toggleBlock(u.id, !!u.isBlocked, u.email)}
+                                      className={cn("btn btn--xs", u.isBlocked ? "btn--secondary" : "btn--tertiary")}
+                                      title={u.isBlocked ? "Avblockera konto" : "Blockera konto"}
+                                    >
+                                      {u.isBlocked ? 'Avblockera' : 'Blockera'}
+                                    </button>
+                                    <button 
+                                      onClick={() => setUserToDelete(u)}
+                                      className="btn btn--xs btn--destructive flex items-center gap-1"
+                                      title="Radera användare"
+                                    >
+                                      <Trash2 size={13} />
+                                      Radera
+                                    </button>
+                                  </>
+                                )}
                               </div>
                             </td>
                           </motion.tr>
@@ -690,7 +669,158 @@ const AdminView = ({
                       </AnimatePresence>
                     </motion.tbody>
                   </table>
-                )}
+                </div>
+              </div>
+            )}
+
+            {/* 2. Invitations Table (Inbjudna användare & Inbjudningskoder) */}
+            {(usersSubView === 'all' || usersSubView === 'invitations') && (
+              <div className={cn(usersSubView === 'all' ? "pt-6 border-t border-inera-secondary-90 mt-6" : "")}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-inera-neutral-10 flex items-center gap-2">
+                      <Key size={17} className="text-inera-primary-40" />
+                      <span>Inbjudna användare & koder ({invitations.length})</span>
+                    </h3>
+                    <p className="text-xs text-inera-neutral-40 mt-0.5">
+                      Här listas alla genererade inbjudningar och koder. Du kan kopiera koder och direktlänkar eller ta bort en inbjuden användare.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={openNewInviteModal}
+                    className="btn btn--xs btn--primary flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
+                  >
+                    <UserPlus size={14} />
+                    <span>Bjud in användare</span>
+                  </button>
+                </div>
+
+                <div className="overflow-x-auto">
+                  {invitations.length === 0 ? (
+                    <div className="p-8 text-center border-2 border-dashed border-inera-secondary-90 rounded-xl">
+                      <Key size={32} className="mx-auto text-inera-neutral-40 mb-3" />
+                      <p className="text-inera-neutral-30 font-medium mb-1">Inga skapade inbjudningar</p>
+                      <p className="text-xs text-inera-neutral-40 mb-4">Skapa en inbjudningskod för att bjuda in nya användare med specifik behörighet.</p>
+                      <button type="button" onClick={openNewInviteModal} className="btn btn--s btn--primary">
+                        Bjud in användare
+                      </button>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left border-collapse min-w-[850px]">
+                      <thead>
+                        <tr className="border-b border-inera-secondary-90 text-xs font-bold text-inera-neutral-40 uppercase tracking-wider">
+                          <th className="pb-3 px-2">Inbjudningskod</th>
+                          <th className="pb-3 px-2">Mottagare & E-post</th>
+                          <th className="pb-3 px-2">Tilldelad Roll</th>
+                          <th className="pb-3 px-2">Skapad datum</th>
+                          <th className="pb-3 px-2">Status</th>
+                          <th className="pb-3 px-2 text-right">Åtgärder</th>
+                        </tr>
+                      </thead>
+                      <motion.tbody layout>
+                        <AnimatePresence mode="popLayout">
+                        {invitations.map((inv) => {
+                          const regLink = typeof window !== 'undefined' ? `${window.location.origin}?invite=${encodeURIComponent(inv.code)}` : `?invite=${inv.code}`;
+                          const registeredUser = users.find(u => 
+                            (inv.usedBy && u.id === inv.usedBy) || 
+                            (inv.code && u.inviteCode === inv.code) || 
+                            (inv.email && u.email?.toLowerCase() === inv.email?.toLowerCase())
+                          );
+
+                          return (
+                            <motion.tr 
+                              key={inv.id} 
+                              layout
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="border-b border-inera-secondary-95 last:border-0 hover:bg-inera-secondary-95/50 text-sm"
+                            >
+                              <td className="py-3 px-2 font-mono font-bold text-inera-primary-40">
+                                <div className="flex items-center gap-2">
+                                  <span className="bg-inera-secondary-95 px-2 py-0.5 rounded border border-inera-secondary-90">{inv.code}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(inv.code, `code-${inv.id}`)}
+                                    className="text-inera-neutral-40 hover:text-inera-primary-40 p-1 rounded hover:bg-inera-secondary-90 transition-colors"
+                                    title="Kopiera inbjudningskod"
+                                  >
+                                    {copiedCodeId === `code-${inv.id}` ? <Check size={14} className="text-inera-success-40" /> : <Copy size={14} />}
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-3 px-2 text-inera-neutral-20">
+                                <div className="leading-tight">
+                                  <div className="font-medium text-inera-neutral-10">{inv.name || 'Öppen inbjudan'}</div>
+                                  {inv.email && <div className="text-xs text-inera-neutral-40">{inv.email}</div>}
+                                </div>
+                              </td>
+                              <td className="py-3 px-2">
+                                <span className={cn(
+                                  "px-2.5 py-0.5 rounded-full text-xs font-bold border",
+                                  inv.role === 'admin' 
+                                    ? "bg-inera-primary-40/10 text-inera-primary-40 border-inera-primary-40/30"
+                                    : inv.role === 'editor'
+                                    ? "bg-inera-accent-40/10 text-inera-accent-40 border-inera-accent-40/30"
+                                    : "bg-inera-secondary-90 text-inera-neutral-30 border-inera-secondary-90"
+                                )}>
+                                  {inv.role === 'admin' ? 'Administratör' : inv.role === 'editor' ? 'Redaktör' : 'Läsbehörig'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-2 text-xs text-inera-neutral-40">
+                                <div>{inv.createdAt ? format(new Date(inv.createdAt), 'yyyy-MM-dd HH:mm') : '-'}</div>
+                                {inv.createdBy && <div className="text-[11px] text-inera-neutral-50">av {inv.createdBy}</div>}
+                              </td>
+                              <td className="py-3 px-2">
+                                {inv.status === 'used' ? (
+                                  <div>
+                                    <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-emerald-200 flex items-center gap-1 w-max">
+                                      <CheckCircle2 size={11} /> Registrerad
+                                    </span>
+                                    {registeredUser && (
+                                      <div className="text-[11px] text-inera-neutral-40 mt-0.5 truncate max-w-[170px]" title={registeredUser.displayName || registeredUser.email}>
+                                        {registeredUser.displayName || registeredUser.email}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-xs font-bold uppercase border border-amber-300 flex items-center gap-1 w-max">
+                                    Väntar
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-2 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(regLink, `link-${inv.id}`)}
+                                    className="btn btn--xs btn--secondary flex items-center gap-1"
+                                    title="Kopiera direktlänk för registrering"
+                                  >
+                                    {copiedCodeId === `link-${inv.id}` ? <Check size={12} className="text-inera-success-40" /> : <ExternalLink size={12} />}
+                                    <span>{copiedCodeId === `link-${inv.id}` ? 'Kopierad' : 'Länk'}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteInvitation(inv)}
+                                    className="btn btn--xs btn--destructive flex items-center gap-1"
+                                    title="Ta bort inbjudan / inbjuden användare"
+                                  >
+                                    <Trash2 size={12} />
+                                    <span>Ta bort</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </motion.tr>
+                          );
+                        })}
+                        </AnimatePresence>
+                      </motion.tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             )}
 
@@ -1137,6 +1267,83 @@ const AdminView = ({
                     >
                       {isDeletingUser ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                       {isDeletingUser ? 'Raderar...' : 'Ja, radera användaren'}
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+
+            {/* Delete Invitation Confirmation Modal */}
+            {invitationToDelete && (
+              <div className="fixed inset-0 bg-inera-neutral-10/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+                <motion.div 
+                  initial={{ scale: 0.95, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="card p-6 shadow-xl max-w-md w-full border-inera-secondary-90 bg-white space-y-4"
+                >
+                  <div className="flex items-center gap-3 text-inera-error-40">
+                    <AlertCircle size={24} />
+                    <h3 className="text-lg font-bold font-display text-inera-neutral-10">Ta bort inbjudan</h3>
+                  </div>
+
+                  <div className="text-sm text-inera-neutral-30 space-y-2">
+                    <p>
+                      Är du säker på att du vill ta bort inbjudan med koden <strong className="font-mono text-inera-primary-40 bg-inera-secondary-95 px-1.5 py-0.5 rounded border border-inera-secondary-90">{invitationToDelete.code}</strong>
+                      {invitationToDelete.email ? <> för <strong className="text-inera-neutral-10">{invitationToDelete.email}</strong></> : invitationToDelete.name ? <> för <strong className="text-inera-neutral-10">{invitationToDelete.name}</strong></> : null}?
+                    </p>
+                    
+                    {invitationToDelete.status === 'used' ? (
+                      (() => {
+                        const matchedUser = users.find(u => 
+                          (invitationToDelete.usedBy && u.id === invitationToDelete.usedBy) ||
+                          (invitationToDelete.code && u.inviteCode === invitationToDelete.code) ||
+                          (invitationToDelete.email && u.email?.toLowerCase() === invitationToDelete.email?.toLowerCase())
+                        );
+                        return (
+                          <div className="p-3 bg-inera-secondary-95 rounded-lg border border-inera-secondary-90 space-y-2 text-xs">
+                            <p className="text-inera-neutral-20 font-medium">
+                              Denna inbjudan har redan använts för registrering
+                              {matchedUser ? <> av <strong className="text-inera-neutral-10">{matchedUser.displayName || matchedUser.email}</strong></> : null}.
+                            </p>
+                            {matchedUser && !isProtectedAdmin(matchedUser.email) && (
+                              <label className="flex items-start gap-2 pt-1 text-inera-neutral-10 cursor-pointer font-medium">
+                                <input 
+                                  type="checkbox" 
+                                  checked={deleteAssociatedUserToo}
+                                  onChange={(e) => setDeleteAssociatedUserToo(e.target.checked)}
+                                  className="mt-0.5 rounded border-inera-secondary-80 text-inera-error-40 focus:ring-inera-error-40"
+                                />
+                                <span>Radera även användarkontot ({matchedUser.email}) permanent</span>
+                              </label>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <p className="text-xs text-inera-neutral-40">
+                        Inbjudningskoden avaktiveras och tas bort. Ingen kommer längre att kunna registrera sig med denna kod.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-3 pt-2">
+                    <button 
+                      onClick={() => {
+                        setInvitationToDelete(null);
+                        setDeleteAssociatedUserToo(false);
+                      }}
+                      disabled={isDeletingInvitation}
+                      className="btn btn--m btn--secondary"
+                    >
+                      Avbryt
+                    </button>
+                    <button 
+                      onClick={executeDeleteInvitation}
+                      disabled={isDeletingInvitation}
+                      className="btn btn--m btn--destructive flex items-center gap-2"
+                    >
+                      {isDeletingInvitation ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                      {isDeletingInvitation ? 'Tar bort...' : 'Ja, ta bort inbjudan'}
                     </button>
                   </div>
                 </motion.div>

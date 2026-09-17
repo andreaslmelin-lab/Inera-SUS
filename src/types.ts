@@ -47,11 +47,20 @@ export interface Product {
   trainId?: string;
   trainName?: string;
   uxLead?: string;
+  uiDesigner?: string;
+  productOwner?: string;
+  serviceManager?: string;
+  otherContact?: string;
+  brandTheme?: string;
+  appliesBrand?: string;
+  framework?: string;
+  links?: string;
   rte?: string;
   maturity?: number;
   susScore?: number;
   idsVersion?: string;
   comment?: string;
+  updatedAt?: string;
 }
 
 export interface Variant {

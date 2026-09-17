@@ -2,8 +2,7 @@
 import { collection, doc, setDoc, getDocs, writeBatch, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import Papa from 'papaparse';
-import { Product } from '../services';
-import { DEFAULT_MASTER_PRODUCTS, loadProductMappings } from './catalogMappingService';
+import { Product } from '../types';
 
 export interface IneraStructureProduct extends Product {
   teamId: string;
@@ -11,6 +10,14 @@ export interface IneraStructureProduct extends Product {
   trainId: string;
   trainName: string;
   uxLead?: string;
+  uiDesigner?: string;
+  productOwner?: string;
+  serviceManager?: string;
+  otherContact?: string;
+  brandTheme?: string;
+  appliesBrand?: string;
+  framework?: string;
+  links?: string;
   rte?: string;
   maturity?: number;
   susScore?: number;
@@ -20,120 +27,276 @@ export interface IneraStructureProduct extends Product {
   updatedAt?: string;
 }
 
-// // Utility to parse Swedish-style semicolon CSV using the specific Inera mapping
+function cleanString(str: any): string {
+  if (str === undefined || str === null) return '';
+  return String(str)
+    .replace(/\r?\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function generateProductId(name: string, existingIds: Set<string>): string {
+  const normalized = name
+    .toLowerCase()
+    .replace(/[åä]/g, 'a')
+    .replace(/[ö]/g, 'o')
+    .replace(/[éè]/g, 'e')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  let baseId = `prod-${normalized}`.substring(0, 45);
+  if (!baseId || baseId === 'prod-') baseId = 'prod-' + Math.random().toString(36).substring(2, 8);
+
+  let uniqueId = baseId;
+  let counter = 2;
+  while (existingIds.has(uniqueId)) {
+    uniqueId = `${baseId}-${counter}`;
+    counter++;
+  }
+  existingIds.add(uniqueId);
+  return uniqueId;
+}
+
+/**
+ * Universal CSV parser for Inera Grundstruktur.
+ * Supports:
+ * 1. Inera Master Product Matrix (e.g. Produkt, Varumärke/Tema, Tillämpar varumärke, Ramverk, IDS-version, Tåg, Team, UX-lead, UI-designer, etc.)
+ * 2. Hierarchical structure CSVs with Typ (product/team/train), ID, Överliggande ID, etc.
+ * 3. Both comma (,) and semicolon (;) separators, with automatic header resolution and clean newline handling in quoted cells.
+ */
 export function parseGrundstrukturCsv(csvText: string): IneraStructureProduct[] {
-  const parsed = Papa.parse<any>(csvText, {
-    delimiter: ';',
-    skipEmptyLines: true,
-    header: false
+  if (!csvText || !csvText.trim()) {
+    throw new Error('Filen är tom eller saknar innehåll.');
+  }
+
+  // 1. First attempt: parse with headers enabled (auto-detect delimiter)
+  const headerParsed = Papa.parse<Record<string, any>>(csvText, {
+    header: true,
+    skipEmptyLines: 'greedy',
+    dynamicTyping: false
   });
 
-  const rows = parsed.data;
-  if (rows.length < 2) {
-    throw new Error('Filen är tom eller saknar rader.');
-  }
+  const rawRows = headerParsed.data;
+  const fields = headerParsed.meta.fields || [];
 
-  const rawHeaders = rows[0].map((h: string) => h.trim());
-  
-  const findIdx = (headers: string[], ...keys: string[]) => {
-    return headers.findIndex(h => {
-      const hh = h.toLowerCase().trim();
-      return keys.some(k => hh === k.toLowerCase() || hh.includes(k.toLowerCase()));
-    });
-  };
-
-  const idIdx = findIdx(rawHeaders, 'ID (Källsystems-mappning)', 'ID', 'Produkt ID');
-  const nameIdx = findIdx(rawHeaders, 'Namn');
-  const typeIdx = findIdx(rawHeaders, 'Typ');
-  const orgAreaIdx = findIdx(rawHeaders, 'Organisationsområde');
-  const parentIdIdx = findIdx(rawHeaders, 'Överliggande ID');
-  const uxLeadIdx = findIdx(rawHeaders, 'UX Ansvarig');
-  const rteIdx = findIdx(rawHeaders, 'RTE');
-  const maturityIdx = findIdx(rawHeaders, 'UX Mognadsnivå', 'Mognad');
-  const susScoreIdx = findIdx(rawHeaders, 'SUS Poäng', 'SUS Betyg');
-  const idsVersionIdx = findIdx(rawHeaders, 'IDS Version');
-  const commentIdx = findIdx(rawHeaders, 'Kommentar');
-
-  // Step 1: Map all rows by ID for hierarchy lookup
-  const rowMap = new Map<string, any>();
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    const id = row[idIdx]?.trim();
-    if (id) rowMap.set(id, row);
-  }
-
-  const products: IneraStructureProduct[] = [];
-
-  // Step 2: Extract products and traverse hierarchy
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    const type = (row[typeIdx] || '').toLowerCase().trim();
-    
-    if (type !== 'product') continue;
-
-    const id = row[idIdx]?.trim();
-    const name = row[nameIdx]?.trim();
-    if (!id || !name) continue;
-
-    const parentId = row[parentIdIdx]?.trim();
-    let teamName = 'Inget team';
-    let teamId = parentId || 'no-team';
-    let trainName = row[orgAreaIdx]?.trim() || 'Inget tåg';
-    let trainId = 'no-train';
-
-    // Traverse up to find Team and Train
-    if (parentId && rowMap.has(parentId)) {
-      const parentRow = rowMap.get(parentId);
-      const parentType = (parentRow[typeIdx] || '').toLowerCase().trim();
-      
-      if (parentType === 'team') {
-        teamId = parentId;
-        teamName = parentRow[nameIdx]?.trim() || teamName;
-        
-        // Use Organisationsområde from the team row for Train Name
-        trainName = parentRow[orgAreaIdx]?.trim() || trainName;
-        trainId = parentRow[parentIdIdx]?.trim() || 'no-train';
-      } else if (parentType === 'train') {
-        // If parent is directly a train
-        trainId = parentId;
-        trainName = parentRow[nameIdx]?.trim() || trainName;
+  const findKey = (row: Record<string, any>, strictKeys: string[], partialKeys: string[] = []): string => {
+    // 1. Strict match
+    for (const key of strictKeys) {
+      for (const f of Object.keys(row)) {
+        const cleanF = f.trim().toLowerCase();
+        if (cleanF === key.toLowerCase()) {
+          const val = row[f];
+          if (val !== undefined && val !== null && String(val).trim() !== '') {
+            return cleanString(val);
+          }
+        }
       }
     }
+    // 2. Partial match
+    for (const key of partialKeys) {
+      for (const f of Object.keys(row)) {
+        const cleanF = f.trim().toLowerCase();
+        if (cleanF.includes(key.toLowerCase()) && 
+            !cleanF.includes('version') && 
+            !cleanF.includes('tema') && 
+            !cleanF.includes('ramverk') &&
+            !cleanF.includes('tillämpar') &&
+            !cleanF.includes('tillampar')) {
+          const val = row[f];
+          if (val !== undefined && val !== null && String(val).trim() !== '') {
+            return cleanString(val);
+          }
+        }
+      }
+    }
+    return '';
+  };
 
-    const uxLead = uxLeadIdx !== -1 ? (row[uxLeadIdx] || '').trim() : '';
-    const rte = rteIdx !== -1 ? (row[rteIdx] || '').trim() : '';
-    
-    let maturity = 0;
-    if (maturityIdx !== -1 && row[maturityIdx]) {
-      const val = parseInt(row[maturityIdx], 10);
-      if (!isNaN(val)) maturity = val;
+  const usedIds = new Set<string>();
+  const products: IneraStructureProduct[] = [];
+
+  // Check if this is a hierarchical CSV (has "Typ" and "Överliggande ID" or "Parent")
+  const isHierarchical = fields.some(f => {
+    const cf = f.toLowerCase();
+    return cf === 'typ' || cf === 'överliggande id' || cf === 'overliggande id';
+  });
+
+  if (isHierarchical) {
+    // Handle hierarchical format
+    const rowMap = new Map<string, Record<string, any>>();
+    for (const row of rawRows) {
+      const id = findKey(row, ['id', 'produkt id', 'id (källsystems-mappning)']);
+      if (id) rowMap.set(id, row);
     }
 
-    let susScore: number | undefined = undefined;
-    if (susScoreIdx !== -1 && row[susScoreIdx]) {
-      const val = parseFloat(row[susScoreIdx].toString().replace(',', '.'));
-      if (!isNaN(val)) susScore = val;
+    for (const row of rawRows) {
+      const type = findKey(row, ['typ', 'type']).toLowerCase();
+      if (type !== 'product' && type !== 'produkt' && type !== '') continue;
+
+      const name = findKey(row, ['namn', 'produkt', 'name', 'tjanst', 'tjänst']);
+      if (!name) continue;
+
+      const rawId = findKey(row, ['id', 'produkt id', 'id (källsystems-mappning)']);
+      const id = rawId || generateProductId(name, usedIds);
+      usedIds.add(id);
+
+      const parentId = findKey(row, ['överliggande id', 'overliggande id', 'parentid', 'parent id']);
+      let teamName = 'Inget team';
+      let teamId = parentId || 'no-team';
+      let trainName = findKey(row, ['organisationsområde', 'organisationsomrade', 'tåg', 'train']) || 'Inget tåg';
+      let trainId = 'no-train';
+
+      if (parentId && rowMap.has(parentId)) {
+        const parentRow = rowMap.get(parentId)!;
+        const parentType = findKey(parentRow, ['typ', 'type']).toLowerCase();
+
+        if (parentType === 'team') {
+          teamId = parentId;
+          teamName = findKey(parentRow, ['namn', 'name', 'team']) || teamName;
+          trainName = findKey(parentRow, ['organisationsområde', 'organisationsomrade', 'tåg', 'train']) || trainName;
+          trainId = findKey(parentRow, ['överliggande id', 'overliggande id', 'parentid']) || 'no-train';
+        } else if (parentType === 'train' || parentType === 'tåg') {
+          trainId = parentId;
+          trainName = findKey(parentRow, ['namn', 'name', 'tåg', 'train']) || trainName;
+        }
+      }
+
+      const uxLead = findKey(row, ['ux ansvarig', 'ux-ansvarig', 'ux-lead', 'ux lead', 'ux']);
+      const uiDesigner = findKey(row, ['ui-designer', 'ui designer', 'designer']);
+      const productOwner = findKey(row, ['produktägare', 'produktagare', 'product owner', 'po']);
+      const serviceManager = findKey(row, ['tjänsteansvarig', 'tjansteansvarig', 'ta', 'rte']);
+      const otherContact = findKey(row, ['övrig kontakt', 'ovrig kontakt', 'kontakt']);
+      const rte = findKey(row, ['rte']) || serviceManager;
+      const idsVersion = findKey(row, ['ids version', 'ids-version', 'idsversion']);
+      const comment = findKey(row, ['kommentar', 'anteckning', 'notering', 'beskrivning']);
+      const brandTheme = findKey(row, ['varumärke/tema', 'varumarke/tema', 'tema', 'varumärke']);
+      const appliesBrand = findKey(row, ['tillämpar varumärke', 'tillampar varumarke']);
+      const framework = findKey(row, ['ramverk', 'framework']);
+      const links = findKey(row, ['länkar', 'lankar', 'länk', 'url', 'webbplats']);
+
+      let maturity = 0;
+      const rawMaturity = findKey(row, ['ux mognadsnivå', 'ux mognad', 'mognad']);
+      if (rawMaturity) {
+        const val = parseInt(rawMaturity, 10);
+        if (!isNaN(val)) maturity = val;
+      }
+
+      let susScore: number | undefined = undefined;
+      const rawSus = findKey(row, ['sus poäng', 'sus poang', 'sus betyg', 'sus score', 'sus']);
+      if (rawSus) {
+        const val = parseFloat(rawSus.replace(',', '.'));
+        if (!isNaN(val)) susScore = val;
+      }
+
+      products.push({
+        id,
+        name,
+        type: 'product',
+        trainId,
+        trainName,
+        teamId,
+        teamName,
+        uxLead,
+        uiDesigner,
+        productOwner,
+        serviceManager,
+        otherContact,
+        rte,
+        maturity,
+        susScore,
+        idsVersion,
+        comment,
+        brandTheme,
+        appliesBrand,
+        framework,
+        links,
+        updatedAt: findKey(row, ['uppdaterat', 'datum']) || new Date().toISOString()
+      });
     }
+  } else {
+    // Master Product Matrix format
+    for (const row of rawRows) {
+      const name = findKey(row, 
+        ['produkt', 'namn', 'product', 'produktnamn', 'tjanst', 'tjänst', 'namn på produkt'], 
+        ['produkt', 'product', 'tjanst', 'tjänst']
+      );
 
-    const idsVersion = idsVersionIdx !== -1 ? (row[idsVersionIdx] || '').trim() : '';
-    const comment = commentIdx !== -1 ? (row[commentIdx] || '').trim() : '';
+      if (!name) continue;
 
-    products.push({
-      id,
-      name,
-      type: 'product',
-      trainId,
-      trainName,
-      teamId,
-      teamName,
-      uxLead,
-      rte,
-      maturity,
-      susScore,
-      idsVersion,
-      comment,
-      updatedAt: new Date().toISOString()
-    });
+      const rawId = findKey(row, ['id', 'produkt id', 'product id', 'id (källsystems-mappning)']);
+      const id = rawId || generateProductId(name, usedIds);
+      usedIds.add(id);
+
+      const trainName = findKey(row, 
+        ['tåg', 'tag', 'organisationsområde', 'organisationsomrade', 'train', 'område', 'omrade', 'art'], 
+        ['tåg', 'organisations']
+      ) || 'Omappade';
+
+      const trainId = findKey(row, ['tåg id', 'train id', 'tag id']) || 
+        `train-${trainName.toLowerCase().replace(/[åä]/g, 'a').replace(/[ö]/g, 'o').replace(/[^a-z0-9]+/g, '-')}`;
+
+      const teamName = findKey(row, 
+        ['team', 'utvecklingsteam', 'teamnamn', 'team namn', 'k1 java', 'k2 ivt'], 
+        ['team']
+      ) || 'Inget team';
+
+      const teamId = findKey(row, ['team id', 'team-id']) || 
+        `team-${teamName.toLowerCase().replace(/[åä]/g, 'a').replace(/[ö]/g, 'o').replace(/[^a-z0-9]+/g, '-')}`;
+
+      const uxLead = findKey(row, ['ux-lead', 'ux lead', 'ux ansvarig', 'ux-ansvarig', 'uxansvarig', 'ux']);
+      const uiDesigner = findKey(row, ['ui-designer', 'ui designer', 'designer', 'uidesigner']);
+      const productOwner = findKey(row, ['produktägare', 'produktagare', 'product owner', 'po']);
+      const serviceManager = findKey(row, ['tjänsteansvarig', 'tjansteansvarig', 'service manager', 'ta', 'rte']);
+      const otherContact = findKey(row, ['övrig kontakt', 'ovrig kontakt', 'kontakt', 'andra kontakter']);
+      const rte = findKey(row, ['rte']) || serviceManager;
+      const idsVersion = findKey(row, ['ids-version', 'ids version', 'idsversion', 'ids']);
+      const comment = findKey(row, ['kommentar', 'anteckning', 'notering', 'beskrivning', 'info']);
+      const brandTheme = findKey(row, ['varumärke/tema', 'varumarke/tema', 'tema', 'varumärke', 'varumarke', 'brand']);
+      const appliesBrand = findKey(row, ['tillämpar varumärke', 'tillampar varumarke', 'varumärkesstatus']);
+      const framework = findKey(row, ['ramverk', 'framework', 'teknik']);
+      const links = findKey(row, ['länkar', 'lankar', 'länk', 'lank', 'url', 'webbplats']);
+
+      let maturity = 0;
+      const rawMaturity = findKey(row, ['ux mognadsnivå', 'ux mognad', 'mognadsnivå', 'mognad']);
+      if (rawMaturity) {
+        const val = parseInt(rawMaturity, 10);
+        if (!isNaN(val)) maturity = val;
+      }
+
+      let susScore: number | undefined = undefined;
+      const rawSus = findKey(row, ['sus poäng', 'sus poang', 'sus betyg', 'sus score', 'sus']);
+      if (rawSus) {
+        const val = parseFloat(rawSus.replace(',', '.'));
+        if (!isNaN(val)) susScore = val;
+      }
+
+      const updatedAt = findKey(row, ['uppdaterat', 'datum', 'senast uppdaterad', 'uppdaterad']) || new Date().toISOString();
+
+      products.push({
+        id,
+        name,
+        type: 'product',
+        trainId,
+        trainName,
+        teamId,
+        teamName,
+        uxLead,
+        uiDesigner,
+        productOwner,
+        serviceManager,
+        otherContact,
+        rte,
+        maturity,
+        susScore,
+        idsVersion,
+        comment,
+        brandTheme,
+        appliesBrand,
+        framework,
+        links,
+        updatedAt
+      });
+    }
   }
 
   return products;
@@ -153,35 +316,48 @@ export const GrundstrukturService = {
     // 1. Clear existing products first to avoid duplicates
     await this.clearAllProducts();
 
-    const batch = writeBatch(db);
-    
-    // Save each parsed product directly into the products collection
-    products.forEach(prod => {
-      const prodRef = doc(db, 'products', prod.id);
-      batch.set(prodRef, {
-        id: prod.id,
-        name: prod.name,
-        teamId: prod.teamId,
-        teamName: prod.teamName,
-        trainId: prod.trainId,
-        trainName: prod.trainName,
-        uxLead: prod.uxLead || '',
-        rte: prod.rte || '',
-        maturity: prod.maturity ?? 0,
-        susScore: prod.susScore ?? null,
-        idsVersion: prod.idsVersion || '',
-        comment: prod.comment || '',
-        type: 'product',
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
-    });
+    // Firestore batch has a limit of 500 operations per batch
+    const chunks: IneraStructureProduct[][] = [];
+    for (let i = 0; i < products.length; i += 400) {
+      chunks.push(products.slice(i, i + 400));
+    }
 
-    await batch.commit();
+    for (const chunk of chunks) {
+      const batch = writeBatch(db);
+      chunk.forEach(prod => {
+        const prodRef = doc(db, 'products', prod.id);
+        batch.set(prodRef, {
+          id: prod.id,
+          name: prod.name,
+          teamId: prod.teamId,
+          teamName: prod.teamName,
+          trainId: prod.trainId,
+          trainName: prod.trainName,
+          uxLead: prod.uxLead || '',
+          uiDesigner: prod.uiDesigner || '',
+          productOwner: prod.productOwner || '',
+          serviceManager: prod.serviceManager || '',
+          otherContact: prod.otherContact || '',
+          rte: prod.rte || '',
+          maturity: prod.maturity ?? 0,
+          susScore: prod.susScore ?? null,
+          idsVersion: prod.idsVersion || '',
+          brandTheme: prod.brandTheme || '',
+          appliesBrand: prod.appliesBrand || '',
+          framework: prod.framework || '',
+          links: prod.links || '',
+          comment: prod.comment || '',
+          type: 'product',
+          updatedAt: prod.updatedAt || new Date().toISOString()
+        }, { merge: true });
+      });
+      await batch.commit();
+    }
   },
 
   // Save a single product edit
   async saveProduct(product: Partial<IneraStructureProduct>): Promise<void> {
-    if (!product.id) throw new Error("Product ID is required for editing.");
+    if (!product.id) throw new Error('Produkt-ID är obligatoriskt.');
     const docRef = doc(db, 'products', product.id);
     await setDoc(docRef, {
       ...product,
@@ -196,6 +372,3 @@ export const GrundstrukturService = {
   }
 };
 
-function mergeOptions(prod: IneraStructureProduct) {
-  return true;
-}

@@ -65,7 +65,7 @@ export default function GrundstrukturView() {
     return () => unsubscribe();
   }, []);
 
-  // CSV File Ingestion Handler
+  // CSV File Ingestion Handler with auto-encoding support (UTF-8 & ISO-8859-1 / Windows-1252)
   const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -74,42 +74,44 @@ export default function GrundstrukturView() {
     setError(null);
     setSuccessMsg(null);
 
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const text = evt.target?.result as string;
-        if (!text) throw new Error('Filen kunde inte läsas.');
-
-        // Parse CSV to Product Structure
-        const parsedProducts = parseGrundstrukturCsv(text);
-        
-        if (parsedProducts.length === 0) {
-          throw new Error('Hittade inga giltiga produkter i CSV-filen.');
-        }
-
-        // Save to Firestore
-        await GrundstrukturService.saveStructure(parsedProducts);
-        
-        setSuccessMsg(`Lyckades läsa in och uppdatera ${parsedProducts.length} produkter i grundstrukturen!`);
-        
-        // Trigger background sync to dashboard
-        await triggerSusMetricsSync();
-      } catch (err: any) {
-        console.error(err);
-        setError(err.message || 'Ett fel uppstod vid bearbetning av CSV-filen.');
-      } finally {
-        setIsUploading(false);
-        // Reset file input value
-        e.target.value = '';
+    try {
+      const buffer = await file.arrayBuffer();
+      
+      // Try UTF-8 first
+      let text = new TextDecoder('utf-8').decode(buffer);
+      
+      // Check if text looks like ISO-8859-1 encoded Swedish (indicated by \uFFFD replacement chars)
+      if (text.includes('\uFFFD')) {
+        try {
+          const latinText = new TextDecoder('windows-1252').decode(buffer);
+          if (!latinText.includes('\uFFFD')) {
+            text = latinText;
+          }
+        } catch {}
       }
-    };
 
-    reader.onerror = () => {
-      setError('Ett fel uppstod vid inläsning av filen.');
+      // Parse CSV to Product Structure
+      const parsedProducts = parseGrundstrukturCsv(text);
+      
+      if (parsedProducts.length === 0) {
+        throw new Error('Hittade inga giltiga produkter i CSV-filen.');
+      }
+
+      // Save to Firestore
+      await GrundstrukturService.saveStructure(parsedProducts);
+      
+      setSuccessMsg(`Lyckades läsa in och uppdatera ${parsedProducts.length} produkter i grundstrukturen!`);
+      
+      // Trigger background sync to dashboard
+      await triggerSusMetricsSync();
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Ett fel uppstod vid bearbetning av CSV-filen.');
+    } finally {
       setIsUploading(false);
-    };
-
-    reader.readAsText(file, 'ISO-8859-1'); // Handles Swedish characters correctly
+      // Reset file input value
+      e.target.value = '';
+    }
   };
 
   // Get unique Trains and Teams for filtering
@@ -159,12 +161,20 @@ export default function GrundstrukturView() {
 
   // Filtered list
   const filteredProducts = useMemo(() => {
+    const q = search.toLowerCase().trim();
     return products.filter(p => {
-      const matchesSearch = 
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.id.toLowerCase().includes(search.toLowerCase()) ||
-        (p.uxLead && p.uxLead.toLowerCase().includes(search.toLowerCase())) ||
-        (p.teamName && p.teamName.toLowerCase().includes(search.toLowerCase()));
+      const matchesSearch = !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        (p.uxLead && p.uxLead.toLowerCase().includes(q)) ||
+        (p.uiDesigner && p.uiDesigner.toLowerCase().includes(q)) ||
+        (p.productOwner && p.productOwner.toLowerCase().includes(q)) ||
+        (p.serviceManager && p.serviceManager.toLowerCase().includes(q)) ||
+        (p.brandTheme && p.brandTheme.toLowerCase().includes(q)) ||
+        (p.idsVersion && p.idsVersion.toLowerCase().includes(q)) ||
+        (p.framework && p.framework.toLowerCase().includes(q)) ||
+        (p.trainName && p.trainName.toLowerCase().includes(q)) ||
+        (p.teamName && p.teamName.toLowerCase().includes(q));
       
       const matchesTrain = selectedTrain === 'Alla' || p.trainName === selectedTrain;
       const matchesTeam = selectedTeam === 'Alla' || p.teamName === selectedTeam;

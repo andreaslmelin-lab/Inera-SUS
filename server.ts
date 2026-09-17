@@ -78,6 +78,9 @@ async function startServer() {
     }
   });
 
+  const DEFAULT_INERA_TOKEN = "inera_ux_token_11am0nao";
+  const DEFAULT_INERA_ENDPOINT = "https://inera-ux-dashboard.vercel.app/api/sync-metrics";
+
   // Proxy API route to avoid CORS and secure tokens server-side
   expressApp.post("/api/sync-metrics", async (req, res) => {
     const controller = new AbortController();
@@ -85,20 +88,36 @@ async function startServer() {
 
     try {
       const payload = req.body;
-      const apiToken = (req.headers['x-api-token'] as string) || (req.headers['X-API-Token'] as string) || "inera_ux_token_11am0nao";
-      const externalUrl = (req.headers['x-sync-endpoint'] as string) || (req.headers['X-Sync-Endpoint'] as string) || "https://inera-ux-dashboard.vercel.app/api/sync-metrics";
+      const rawToken = ((req.headers['x-api-token'] as string) || (req.headers['X-API-Token'] as string) || "").trim();
+      let apiToken = (rawToken && rawToken !== "undefined" && rawToken !== "null") ? rawToken : DEFAULT_INERA_TOKEN;
+      const rawEndpoint = ((req.headers['x-sync-endpoint'] as string) || (req.headers['X-Sync-Endpoint'] as string) || "").trim();
+      const externalUrl = (rawEndpoint && rawEndpoint !== "undefined" && rawEndpoint !== "null") ? rawEndpoint : DEFAULT_INERA_ENDPOINT;
 
-      console.log(`Attempting sync to upstream URL: ${externalUrl}...`);
+      console.log(`Attempting sync to upstream URL: ${externalUrl} with token: ${apiToken.substring(0, 10)}...`);
 
-      const upstreamResponse = await fetch(externalUrl, {
+      let upstreamResponse = await fetch(externalUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-token": apiToken
+          "X-API-Token": apiToken
         },
         body: JSON.stringify(payload),
         signal: controller.signal
       });
+
+      // If upstream failed with 401 Unauthorized and a custom/invalid token was passed, retry once with the official default token
+      if (upstreamResponse.status === 401 && apiToken !== DEFAULT_INERA_TOKEN) {
+        console.warn(`Upstream 401 Unauthorized with provided token. Auto-retrying with default official token "${DEFAULT_INERA_TOKEN}"...`);
+        upstreamResponse = await fetch(externalUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Token": DEFAULT_INERA_TOKEN
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+      }
 
       clearTimeout(timeoutId);
 
@@ -116,7 +135,7 @@ async function startServer() {
         console.error("Upstream dashboard sync failed:", upstreamResponse.status, upstreamResponse.statusText, responseText);
         return res.status(200).json({
           success: false,
-          error: `Upstream service response: ${upstreamResponse.status} ${upstreamResponse.statusText}`,
+          error: responseData.error || responseData.message || `Upstream service response: ${upstreamResponse.status} ${upstreamResponse.statusText}`,
           details: responseData
         });
       }

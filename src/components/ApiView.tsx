@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Copy, RefreshCw, CheckCircle2, AlertCircle, Send } from 'lucide-react';
+import { Copy, RefreshCw, CheckCircle2, AlertCircle, Send, RotateCcw } from 'lucide-react';
 import { motion } from 'motion/react';
-import { triggerSusMetricsSync, generateSusMetricsPayload } from '../services/syncService';
+import { 
+  triggerSusMetricsSync, 
+  generateSusMetricsPayload, 
+  DEFAULT_INERA_SUS_TOKEN, 
+  DEFAULT_INERA_SUS_ENDPOINT 
+} from '../services/syncService';
 import { cn } from '../lib/utils';
 
 const ApiView = () => {
@@ -9,10 +14,12 @@ const ApiView = () => {
   const [syncStatus, setSyncStatus] = useState<{ success?: boolean; message?: string } | null>(null);
 
   const [endpoint, setEndpoint] = useState(() => {
-    return localStorage.getItem('inera_sus_sync_endpoint') || 'https://inera-ux-dashboard.vercel.app/api/sync-metrics';
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('inera_sus_sync_endpoint')?.trim() : null;
+    return (saved && saved !== 'undefined' && saved !== 'null') ? saved : DEFAULT_INERA_SUS_ENDPOINT;
   });
   const [apiToken, setApiToken] = useState(() => {
-    return localStorage.getItem('inera_sus_sync_token') || 'inera_ux_token_11am0nao';
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('inera_sus_sync_token')?.trim() : null;
+    return (saved && saved !== 'undefined' && saved !== 'null') ? saved : DEFAULT_INERA_SUS_TOKEN;
   });
 
   const [jsonPayload, setJsonPayload] = useState('');
@@ -25,6 +32,16 @@ const ApiView = () => {
   useEffect(() => {
     localStorage.setItem('inera_sus_sync_token', apiToken);
   }, [apiToken]);
+
+  const handleResetToken = () => {
+    setApiToken(DEFAULT_INERA_SUS_TOKEN);
+    localStorage.setItem('inera_sus_sync_token', DEFAULT_INERA_SUS_TOKEN);
+  };
+
+  const handleResetEndpoint = () => {
+    setEndpoint(DEFAULT_INERA_SUS_ENDPOINT);
+    localStorage.setItem('inera_sus_sync_endpoint', DEFAULT_INERA_SUS_ENDPOINT);
+  };
 
   const fetchLivePayload = async () => {
     setLoadingPayload(true);
@@ -49,7 +66,18 @@ const ApiView = () => {
     setSyncStatus(null);
     setResponse('');
     try {
+      const sanitizedToken = apiToken.trim() || DEFAULT_INERA_SUS_TOKEN;
+      if (apiToken !== sanitizedToken) {
+        setApiToken(sanitizedToken);
+      }
       const res = await triggerSusMetricsSync();
+      
+      // Update displayed token if service self-healed
+      const updatedSavedToken = localStorage.getItem('inera_sus_sync_token');
+      if (updatedSavedToken && updatedSavedToken !== apiToken) {
+        setApiToken(updatedSavedToken);
+      }
+
       if (res.success) {
         setSyncStatus({ success: true, message: 'Data synkad med Inera UX Dashboard' });
         setResponse(JSON.stringify(res.data || { success: true }, null, 2));
@@ -74,6 +102,8 @@ const ApiView = () => {
     setResponse('');
     try {
       const parsed = JSON.parse(jsonPayload);
+      const tokenToUse = apiToken.trim() || DEFAULT_INERA_SUS_TOKEN;
+      const endpointToUse = endpoint.trim() || DEFAULT_INERA_SUS_ENDPOINT;
       
       let data: any = {};
       let isSuccess = false;
@@ -84,8 +114,8 @@ const ApiView = () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-API-Token': apiToken,
-            'X-Sync-Endpoint': endpoint
+            'X-API-Token': tokenToUse,
+            'X-Sync-Endpoint': endpointToUse
           },
           body: JSON.stringify(parsed)
         });
@@ -102,12 +132,11 @@ const ApiView = () => {
 
       if (proxyFailed) {
         try {
-          const directRes = await fetch(endpoint, {
+          const directRes = await fetch(endpointToUse, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'X-API-Token': apiToken,
-              'x-api-token': apiToken
+              'X-API-Token': tokenToUse
             },
             body: JSON.stringify(parsed)
           });
@@ -120,9 +149,14 @@ const ApiView = () => {
             isSuccess = false;
           }
         } catch (directErr: any) {
-          data = { error: 'Misslyckades att synka. Appen körs på en statisk host, och det direkta anropet blockerades (troligen pga CORS).' };
+          data = { error: 'Misslyckades att synka. Det direkta anropet blockerades.' };
           isSuccess = false;
         }
+      }
+
+      // If token failed, auto-heal if different from default
+      if (!isSuccess && (data.error?.includes('Unauthorized') || data.error?.includes('X-API-Token')) && tokenToUse !== DEFAULT_INERA_SUS_TOKEN) {
+        handleResetToken();
       }
 
       setResponse(JSON.stringify(data, null, 2));
@@ -143,6 +177,11 @@ const ApiView = () => {
       setIsSyncing(false);
     }
   };
+
+  const isAuthError = syncStatus && !syncStatus.success && (
+    syncStatus.message?.includes('Unauthorized') || 
+    syncStatus.message?.includes('X-API-Token')
+  );
 
   return (
     <motion.div 
@@ -172,20 +211,51 @@ const ApiView = () => {
 
         {syncStatus && (
           <div className={cn(
-            "p-3 rounded-lg text-sm font-semibold flex items-center gap-2 mb-6 transition-all",
+            "p-3 rounded-lg text-sm font-semibold transition-all mb-6",
             syncStatus.success ? "bg-inera-success-95 text-inera-success-40 border border-inera-success-40" : "bg-inera-error-95 text-inera-error-40 border border-inera-error-40"
           )}>
-            {syncStatus.success ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
-            <span>{syncStatus.message}</span>
+            <div className="flex items-center gap-2">
+              {syncStatus.success ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+              <span>{syncStatus.message}</span>
+            </div>
+            {isAuthError && (
+              <div className="mt-3 pt-3 border-t border-inera-error-40/30 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-normal text-inera-error-40">
+                  Felaktig eller saknad token. Återställ till Inera UX Dashboards standardtoken:
+                </span>
+                <button 
+                  onClick={() => {
+                    handleResetToken();
+                    setTimeout(() => handleManualSync(), 100);
+                  }}
+                  className="btn btn--xs btn--primary shrink-0 flex items-center gap-1"
+                >
+                  <RotateCcw size={14} />
+                  Återställ standardtoken & synka nu
+                </button>
+              </div>
+            )}
           </div>
         )}
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-inera-neutral-40 mb-1">SYNC API ENDPOINT (POST)</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-inera-neutral-40">SYNC API ENDPOINT (POST)</label>
+              {endpoint !== DEFAULT_INERA_SUS_ENDPOINT && (
+                <button 
+                  onClick={handleResetEndpoint}
+                  className="text-xs text-inera-primary-40 hover:underline flex items-center gap-1"
+                  title="Återställ till standard-URL"
+                >
+                  <RotateCcw size={12} />
+                  Återställ URL
+                </button>
+              )}
+            </div>
             <div className="flex gap-2">
               <input 
-                type="text"
+                type="text" 
                 value={endpoint} 
                 onChange={(e) => setEndpoint(e.target.value)}
                 className="flex-grow p-2 border border-inera-secondary-90 rounded text-sm bg-inera-secondary-95 font-mono text-inera-neutral-10 focus:outline-none focus:ring-1 focus:ring-inera-primary-40" 
@@ -201,14 +271,38 @@ const ApiView = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-inera-neutral-40 mb-1">X-API-TOKEN (HEADER)</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-inera-neutral-40">X-API-TOKEN (HEADER)</label>
+              {apiToken !== DEFAULT_INERA_SUS_TOKEN && (
+                <button 
+                  onClick={handleResetToken}
+                  className="text-xs text-inera-primary-40 hover:underline flex items-center gap-1"
+                  title="Återställ till standardtoken"
+                >
+                  <RotateCcw size={12} />
+                  Återställ standardtoken
+                </button>
+              )}
+            </div>
             <div className="flex gap-2">
               <input 
-                type="text"
+                type="text" 
                 value={apiToken} 
                 onChange={(e) => setApiToken(e.target.value)}
-                className="flex-grow p-2 border border-inera-secondary-90 rounded text-sm bg-inera-secondary-95 font-mono text-inera-neutral-10 focus:outline-none focus:ring-1 focus:ring-inera-primary-40" 
+                className={cn(
+                  "flex-grow p-2 border rounded text-sm font-mono text-inera-neutral-10 focus:outline-none focus:ring-1 focus:ring-inera-primary-40",
+                  apiToken !== DEFAULT_INERA_SUS_TOKEN 
+                    ? "bg-inera-warning-95/40 border-inera-warning-40/50" 
+                    : "bg-inera-secondary-95 border-inera-secondary-90"
+                )}
               />
+              <button 
+                onClick={handleResetToken}
+                className="p-2 border border-inera-secondary-90 rounded bg-white hover:bg-inera-secondary-95 text-inera-neutral-20 shrink-0"
+                title="Återställ till standardtoken (inera_ux_token_11am0nao)"
+              >
+                <RotateCcw size={16} />
+              </button>
               <button 
                 onClick={() => navigator.clipboard.writeText(apiToken)}
                 className="p-2 border border-inera-secondary-90 rounded bg-white hover:bg-inera-secondary-95 text-inera-neutral-20 shrink-0"
@@ -217,6 +311,9 @@ const ApiView = () => {
                 <Copy size={16} />
               </button>
             </div>
+            <p className="text-xs text-inera-neutral-40 mt-1">
+              Standard: <code className="font-mono text-inera-neutral-20">{DEFAULT_INERA_SUS_TOKEN}</code>
+            </p>
           </div>
         </div>
       </div>

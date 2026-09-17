@@ -61,10 +61,11 @@ service cloud.firestore {
     }
 
     function isValidInvitation(data) {
-      return data.keys().hasAll(['code', 'email', 'role', 'status']) &&
-             data.code is string && data.email is string &&
+      return data.keys().hasAll(['code', 'role', 'status']) &&
+             data.code is string &&
              (data.role == 'admin' || data.role == 'editor' || data.role == 'viewer') &&
-             (data.status == 'active' || data.status == 'used' || data.status == 'revoked');
+             (data.status == 'active' || data.status == 'used' || data.status == 'revoked') &&
+             (!('email' in data) || data.email is string);
     }
 
     function isValidProduct(data) {
@@ -132,7 +133,8 @@ service cloud.firestore {
 
     match /invitations/{invitationId} {
       allow read: if true;
-      allow create, delete: if isAdmin() && isValidInvitation(request.resource.data);
+      allow create: if isAdmin() && isValidInvitation(request.resource.data);
+      allow delete: if isAdmin();
       allow update: if (isAdmin() && isValidInvitation(request.resource.data)) || 
                        (isAuthenticated() && request.resource.data.status == 'used');
     }
