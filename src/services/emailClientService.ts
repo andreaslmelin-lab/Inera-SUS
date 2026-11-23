@@ -1,10 +1,18 @@
 import { auth, sendPasswordResetEmail } from '../firebase';
 import { UserRole } from '../types';
 
+export interface PasswordResetDispatchResult {
+  method: 'smtp' | 'firebase';
+  fallbackReason?: string;
+  missingVars?: string[];
+}
+
 export async function requestPasswordResetViaApp(
   email: string
-): Promise<{ method: 'smtp' | 'firebase' }> {
+): Promise<PasswordResetDispatchResult> {
   const cleanEmail = email.trim();
+  let fallbackReason: string | undefined;
+  let missingVars: string[] | undefined;
 
   try {
     const res = await fetch('/api/auth/password-reset', {
@@ -15,25 +23,42 @@ export async function requestPasswordResetViaApp(
       body: JSON.stringify({ email: cleanEmail }),
     });
 
-    const data = await res.json().catch(() => null);
+    const rawText = await res.text();
+    let data: any = null;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = null;
+    }
 
     if (!res.ok) {
       throw new Error(data?.error || 'Kunde inte begära lösenordsåterställning.');
     }
 
-    if (data?.handledBy === 'smtp' && data?.success) {
+    if (!data) {
+      fallbackReason = 'api_unavailable';
+    } else if (data.handledBy === 'smtp' && data.success) {
       return { method: 'smtp' };
+    } else if (data.reason) {
+      fallbackReason = String(data.reason);
+      if (Array.isArray(data.missingVars)) {
+        missingVars = data.missingVars;
+      }
     }
   } catch (err: any) {
-    // If rate-limited or explicit validation error, propagate it
-    if (err?.message && (err.message.includes('För många') || err.message.includes('giltig e-postadress'))) {
+    if (
+      err?.message &&
+      (err.message.includes('För många') ||
+        err.message.includes('giltig e-postadress') ||
+        err.message.includes('Kunde inte begära'))
+    ) {
       throw err;
     }
-    // Otherwise fall back safely to Firebase Auth client SDK
+    fallbackReason = fallbackReason || 'api_unreachable';
   }
 
   await sendPasswordResetEmail(auth, cleanEmail);
-  return { method: 'firebase' };
+  return { method: 'firebase', fallbackReason, missingVars };
 }
 
 export async function sendInvitationEmailViaSmtp(params: {
@@ -57,7 +82,17 @@ export async function sendInvitationEmailViaSmtp(params: {
     body: JSON.stringify(params),
   });
 
-  const data = await res.json().catch(() => ({}));
+  const rawText = await res.text();
+  let data: any = null;
+  try {
+    data = JSON.parse(rawText);
+  } catch {
+    return {
+      success: false,
+      error: 'Kunde inte läsa JSON-svar från e-postservern (/api/admin/email/send-invitation). Kontrollera att serverfunktionerna körs.',
+    };
+  }
+
   if (!res.ok || !data?.success) {
     return {
       success: false,

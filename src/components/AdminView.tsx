@@ -410,6 +410,13 @@ const AdminView = ({
           if (!response.ok) {
             throw new Error(resData.error || 'Misslyckades att ändra lösenordet via backend.');
           }
+
+          if (resData.firestoreSynced === false) {
+            await updateDoc(doc(db, 'users', userToChangePassword.id), {
+              mustChangePassword: forceChangeOnLogin,
+              passwordChangedByAdminAt: serverTimestamp()
+            });
+          }
         } else {
           throw new Error('Inget svar från servern.');
         }
@@ -435,11 +442,24 @@ const AdminView = ({
     setPwdSuccess('');
     try {
       const res = await requestPasswordResetViaApp(targetEmail);
-      setPwdSuccess(
-        res.method === 'smtp'
-          ? `En återställningslänk har skickats via Gmail SMTP till ${targetEmail}!`
-          : `En länk för lösenordsåterställning har skickats till ${targetEmail}!`
-      );
+      if (res.method === 'smtp') {
+        setPwdSuccess(`En återställningslänk har skickats via Gmail SMTP till ${targetEmail}!`);
+      } else if (res.fallbackReason === 'smtp_not_configured') {
+        const missingText = res.missingVars?.length ? ` (${res.missingVars.join(', ')})` : '';
+        setPwdSuccess(
+          `Skickad via Firebase Auth (ej Gmail SMTP eftersom SMTP-variabler saknas i servermiljön${missingText}). Kontrollera även skräpposten hos ${targetEmail}.`
+        );
+      } else if (res.fallbackReason === 'admin_sdk_unavailable') {
+        setPwdSuccess(
+          `Skickad via Firebase Auth (ej Gmail SMTP eftersom servern saknar Firebase Admin IAM-behörighet för att skapa återställningslänk). Kontrollera även skräpposten hos ${targetEmail}.`
+        );
+      } else if (res.fallbackReason === 'api_unavailable') {
+        setPwdSuccess(
+          `Skickad via Firebase Auth (backend-API:t för SMTP kunde inte nås). Kontrollera även skräpposten hos ${targetEmail}.`
+        );
+      } else {
+        setPwdSuccess(`En länk för lösenordsåterställning har skickats till ${targetEmail}!`);
+      }
     } catch (err: any) {
       setPwdError(err.message || 'Kunde inte skicka återställningslänk');
     }
