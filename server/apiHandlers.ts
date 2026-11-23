@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { IncomingMessage, ServerResponse } from "http";
-import { initializeApp, getApps, getApp, App } from "firebase-admin/app";
+import { initializeApp, getApps, getApp, applicationDefault, App } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import {
@@ -191,11 +191,106 @@ function isAdminSdkCredentialOrIamError(err: any): boolean {
     code.includes("permission-denied") ||
     msg.includes("permission_denied") ||
     msg.includes("permission denied") ||
+    msg.includes("user_project_denied") ||
     msg.includes("default credentials") ||
     msg.includes("insufficient permission") ||
     msg.includes("serviceusage") ||
     msg.includes("iam")
   );
+}
+
+function isQuotaProjectFallbackError(err: any): boolean {
+  const code = String(err?.code || "").toLowerCase();
+  const msg = String(err?.message || "").toLowerCase();
+  return code === "auth/internal-error" && msg.includes("identitytoolkit.googleapis.com");
+}
+
+async function generatePasswordResetLinkSafe(email: string, continueUrl: string): Promise<string> {
+  const adminApp = getAdminApp();
+  try {
+    return await getAuth(adminApp || undefined).generatePasswordResetLink(email, {
+      url: continueUrl,
+    });
+  } catch (err: any) {
+    if (!isQuotaProjectFallbackError(err) || !firebaseConfig?.projectId) {
+      throw err;
+    }
+
+    const tokenObj = await applicationDefault().getAccessToken();
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/accounts:sendOobCode`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenObj.access_token}`,
+          "Content-Type": "application/json",
+          "x-goog-user-project": firebaseConfig.projectId,
+        },
+        body: JSON.stringify({
+          requestType: "PASSWORD_RESET",
+          email,
+          continueUrl,
+          returnOobLink: true,
+        }),
+      }
+    );
+
+    const data: any = await res.json().catch(() => ({}));
+    if (res.ok && data?.oobLink) {
+      return String(data.oobLink);
+    }
+
+    const apiMsg = String(data?.error?.message || "");
+    if (apiMsg.includes("EMAIL_NOT_FOUND")) {
+      const notFoundErr: any = new Error("User not found");
+      notFoundErr.code = "auth/user-not-found";
+      throw notFoundErr;
+    }
+
+    const apiErr: any = new Error(apiMsg || "Identity Toolkit API error");
+    apiErr.code = res.status === 403 ? "auth/insufficient-permission" : "auth/internal-error";
+    throw apiErr;
+  }
+}
+
+async function updateUserPasswordSafe(uid: string, newPassword: string): Promise<void> {
+  const adminApp = getAdminApp();
+  try {
+    await getAuth(adminApp || undefined).updateUser(uid, {
+      password: newPassword,
+    });
+  } catch (err: any) {
+    if (!isQuotaProjectFallbackError(err) || !firebaseConfig?.projectId) {
+      throw err;
+    }
+
+    const tokenObj = await applicationDefault().getAccessToken();
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/accounts:update`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${tokenObj.access_token}`,
+          "Content-Type": "application/json",
+          "x-goog-user-project": firebaseConfig.projectId,
+        },
+        body: JSON.stringify({
+          localId: uid,
+          password: newPassword,
+        }),
+      }
+    );
+
+    const data: any = await res.json().catch(() => ({}));
+    if (res.ok) {
+      return;
+    }
+
+    const apiMsg = String(data?.error?.message || "");
+    const apiErr: any = new Error(apiMsg || "Kunde inte uppdatera lösenordet i Firebase Auth.");
+    apiErr.code = res.status === 403 ? "auth/insufficient-permission" : "auth/internal-error";
+    throw apiErr;
+  }
 }
 
 const passwordResetRateLimit = new Map<string, number[]>();
@@ -374,12 +469,9 @@ export async function handlePasswordReset(req: ApiRequest, res: ApiResponse) {
   }
 
   try {
-    const adminApp = getAdminApp();
     const originHeader = getHeader(req, "origin");
     const continueUrl = process.env.APP_URL || originHeader || "https://inera-sus.vercel.app";
-    const resetLink = await getAuth(adminApp || undefined).generatePasswordResetLink(lowerEmail, {
-      url: continueUrl,
-    });
+    const resetLink = await generatePasswordResetLinkSafe(lowerEmail, continueUrl);
 
     const mail = buildPasswordResetEmail({
       appName,
@@ -438,15 +530,12 @@ export async function handleAdminChangePassword(req: ApiRequest, res: ApiRespons
     }
 
     try {
-      const adminApp = getAdminApp();
-      await getAuth(adminApp || undefined).updateUser(uid, {
-        password: newPassword,
-      });
+      await updateUserPasswordSafe(uid, newPassword);
     } catch (authErr: any) {
       if (isAdminSdkCredentialOrIamError(authErr)) {
         return sendJson(res, 400, {
           error:
-            'Direkt lösenordsbyte via servern stöds inte i denna miljö eftersom Firebase Admin SDK saknar IAM-behörighet (roles/firebaseauth.admin). Använd istället "Skicka länk för lösenordsåterställning per e-post".',
+            'Direkt lösenordsbyte via servern saknar nödvändig IAM-behörighet (kontrollera att rollerna "Firebase Authentication Admin" och "Service Usage Consumer" finns på tjänstekontot). Använd annars "Skicka länk för lösenordsåterställning per e-post".',
           code: "ADMIN_SDK_UNAVAILABLE",
         });
       }
