@@ -1,9 +1,7 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import type { IncomingMessage, ServerResponse } from "http";
-import { initializeApp, getApps, getApp, applicationDefault, App } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import {
   sendEmail,
   getSmtpConfigSummary,
@@ -47,25 +45,120 @@ const metadataJson = readJsonFileSafe<{ name?: string }>("metadata.json", {
 });
 
 const appName = metadataJson?.name ? String(metadataJson.name) : "Inera SUS Tracker";
+const firebaseProjectId = firebaseConfig?.projectId || "gen-lang-client-0974410969";
 
-function getAdminApp(): App | null {
-  try {
-    return getApps().length
-      ? getApp()
-      : initializeApp(
-          firebaseConfig?.projectId
-            ? { projectId: firebaseConfig.projectId }
-            : undefined
-        );
-  } catch (err) {
-    console.warn("Could not initialize firebase-admin:", err);
-    return null;
+// Lightweight, zero-dependency Firebase ID token verification using Node crypto & Google's public X.509 certs
+const FIREBASE_CERTS_URL =
+  "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
+let cachedCerts: Record<string, string> | null = null;
+let cachedCertsExpiresAt = 0;
+
+async function fetchFirebasePublicCerts(forceRefresh = false): Promise<Record<string, string>> {
+  const now = Date.now();
+  if (!forceRefresh && cachedCerts && now < cachedCertsExpiresAt) {
+    return cachedCerts;
   }
+
+  const res = await fetch(FIREBASE_CERTS_URL);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch Firebase public keys (${res.status})`);
+  }
+
+  const cacheControl = res.headers.get("cache-control") || "";
+  const maxAgeMatch = cacheControl.match(/max-age=(\d+)/i);
+  const maxAgeSeconds = maxAgeMatch ? Number(maxAgeMatch[1]) : 3600;
+  cachedCerts = (await res.json()) as Record<string, string>;
+  cachedCertsExpiresAt = now + Math.max(60, maxAgeSeconds) * 1000;
+  return cachedCerts;
 }
 
-function getAdminFirestore() {
-  const adminApp = getAdminApp();
-  if (!adminApp) return null;
+function decodeBase64UrlJson<T = any>(segment: string): T {
+  const json = Buffer.from(segment, "base64url").toString("utf8");
+  return JSON.parse(json) as T;
+}
+
+async function verifyFirebaseIdToken(
+  token: string,
+  projectId: string
+): Promise<{ uid: string; email: string; emailVerified: boolean }> {
+  if (!token || token.length > 8192) {
+    throw new Error("Invalid token length");
+  }
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    throw new Error("Malformed JWT");
+  }
+
+  const header = decodeBase64UrlJson<{ alg?: string; kid?: string }>(parts[0]);
+  const payload = decodeBase64UrlJson<{
+    aud?: string;
+    iss?: string;
+    sub?: string;
+    email?: string;
+    email_verified?: boolean;
+    exp?: number;
+    iat?: number;
+    auth_time?: number;
+  }>(parts[1]);
+
+  if (header.alg !== "RS256" || !header.kid || typeof header.kid !== "string") {
+    throw new Error("Unsupported JWT header");
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (payload.aud !== projectId) {
+    throw new Error("Invalid token audience");
+  }
+  if (payload.iss !== `https://securetoken.google.com/${projectId}`) {
+    throw new Error("Invalid token issuer");
+  }
+  if (!payload.sub || typeof payload.sub !== "string" || payload.sub.length > 128) {
+    throw new Error("Invalid token subject");
+  }
+  if (typeof payload.exp !== "number" || payload.exp <= nowSec) {
+    throw new Error("Token expired");
+  }
+  if (typeof payload.iat !== "number" || payload.iat > nowSec + 300) {
+    throw new Error("Invalid token issued-at time");
+  }
+  if (typeof payload.auth_time !== "number" || payload.auth_time > nowSec + 300) {
+    throw new Error("Invalid auth_time");
+  }
+
+  let certs = await fetchFirebasePublicCerts(false);
+  let certPem = certs[header.kid];
+  if (!certPem) {
+    certs = await fetchFirebasePublicCerts(true);
+    certPem = certs[header.kid];
+  }
+  if (!certPem) {
+    throw new Error("Signing certificate not found");
+  }
+
+  const verifier = crypto.createVerify("RSA-SHA256");
+  verifier.update(`${parts[0]}.${parts[1]}`);
+  const isValidSig = verifier.verify(certPem, Buffer.from(parts[2], "base64url"));
+  if (!isValidSig) {
+    throw new Error("Invalid token signature");
+  }
+
+  return {
+    uid: payload.sub,
+    email: String(payload.email || "").toLowerCase().trim(),
+    emailVerified: payload.email_verified === true,
+  };
+}
+
+async function getLazyAdminApp() {
+  const { initializeApp, getApps, getApp } = await import("firebase-admin/app");
+  return getApps().length
+    ? getApp()
+    : initializeApp(firebaseProjectId ? { projectId: firebaseProjectId } : undefined);
+}
+
+async function getLazyAdminFirestore() {
+  const adminApp = await getLazyAdminApp();
+  const { getFirestore } = await import("firebase-admin/firestore");
   const dbId = firebaseConfig?.firestoreDatabaseId;
   if (dbId && dbId !== "(default)") {
     return getFirestore(adminApp, dbId);
@@ -153,27 +246,24 @@ async function verifyAdminRequest(req: ApiRequest): Promise<AdminAuthResult> {
   }
   const token = authHeader.split(" ")[1];
   try {
-    const adminApp = getAdminApp();
-    const decodedToken = await getAuth(adminApp || undefined).verifyIdToken(token);
-    const email = (decodedToken.email || "").toLowerCase().trim();
-    if (!email || decodedToken.email_verified === false) {
+    const verified = await verifyFirebaseIdToken(token, firebaseProjectId);
+    if (!verified.email || !verified.emailVerified) {
       return { ok: false, status: 403, error: "Åtkomst nekad. Verifierad e-postadress krävs." };
     }
-    if (ADMIN_EMAILS.includes(email)) {
-      return { ok: true, uid: decodedToken.uid, email };
+    if (ADMIN_EMAILS.includes(verified.email)) {
+      return { ok: true, uid: verified.uid, email: verified.email };
     }
 
+    // Optional Firestore role check (succeeds in Google Cloud/AI Studio when IAM is granted)
     try {
-      const db = getAdminFirestore();
-      if (db) {
-        const callerDoc = await db.collection("users").doc(decodedToken.uid).get();
-        const callerData = callerDoc.data();
-        if (callerData?.role === "admin" && !callerData?.isBlocked) {
-          return { ok: true, uid: decodedToken.uid, email };
-        }
+      const db = await getLazyAdminFirestore();
+      const callerDoc = await db.collection("users").doc(verified.uid).get();
+      const callerData = callerDoc.data();
+      if (callerData?.role === "admin" && !callerData?.isBlocked) {
+        return { ok: true, uid: verified.uid, email: verified.email };
       }
     } catch {
-      // Starter Tier or external serverless environments without IAM cannot query Firestore via Admin SDK
+      // External serverless environments without GCP IAM cannot query Firestore via Admin SDK
     }
 
     return { ok: false, status: 403, error: "Åtkomst nekad. Endast behöriga administratörer har tillgång." };
@@ -206,25 +296,27 @@ function isQuotaProjectFallbackError(err: any): boolean {
 }
 
 async function generatePasswordResetLinkSafe(email: string, continueUrl: string): Promise<string> {
-  const adminApp = getAdminApp();
+  const { applicationDefault } = await import("firebase-admin/app");
+  const { getAuth } = await import("firebase-admin/auth");
+  const adminApp = await getLazyAdminApp();
   try {
-    return await getAuth(adminApp || undefined).generatePasswordResetLink(email, {
+    return await getAuth(adminApp).generatePasswordResetLink(email, {
       url: continueUrl,
     });
   } catch (err: any) {
-    if (!isQuotaProjectFallbackError(err) || !firebaseConfig?.projectId) {
+    if (!isQuotaProjectFallbackError(err)) {
       throw err;
     }
 
     const tokenObj = await applicationDefault().getAccessToken();
     const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/accounts:sendOobCode`,
+      `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(firebaseProjectId)}/accounts:sendOobCode`,
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${tokenObj.access_token}`,
           "Content-Type": "application/json",
-          "x-goog-user-project": firebaseConfig.projectId,
+          "x-goog-user-project": firebaseProjectId,
         },
         body: JSON.stringify({
           requestType: "PASSWORD_RESET",
@@ -254,25 +346,27 @@ async function generatePasswordResetLinkSafe(email: string, continueUrl: string)
 }
 
 async function updateUserPasswordSafe(uid: string, newPassword: string): Promise<void> {
-  const adminApp = getAdminApp();
+  const { applicationDefault } = await import("firebase-admin/app");
+  const { getAuth } = await import("firebase-admin/auth");
+  const adminApp = await getLazyAdminApp();
   try {
-    await getAuth(adminApp || undefined).updateUser(uid, {
+    await getAuth(adminApp).updateUser(uid, {
       password: newPassword,
     });
   } catch (err: any) {
-    if (!isQuotaProjectFallbackError(err) || !firebaseConfig?.projectId) {
+    if (!isQuotaProjectFallbackError(err)) {
       throw err;
     }
 
     const tokenObj = await applicationDefault().getAccessToken();
     const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(firebaseConfig.projectId)}/accounts:update`,
+      `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(firebaseProjectId)}/accounts:update`,
       {
         method: "POST",
         headers: {
           Authorization: `Bearer ${tokenObj.access_token}`,
           "Content-Type": "application/json",
-          "x-goog-user-project": firebaseConfig.projectId,
+          "x-goog-user-project": firebaseProjectId,
         },
         body: JSON.stringify({
           localId: uid,
@@ -546,14 +640,13 @@ export async function handleAdminChangePassword(req: ApiRequest, res: ApiRespons
 
     let firestoreSynced = false;
     try {
-      const db = getAdminFirestore();
-      if (db) {
-        await db.collection("users").doc(uid).update({
-          mustChangePassword: forceChangeOnLogin === undefined ? true : forceChangeOnLogin,
-          passwordChangedByAdminAt: FieldValue.serverTimestamp(),
-        });
-        firestoreSynced = true;
-      }
+      const db = await getLazyAdminFirestore();
+      const { FieldValue } = await import("firebase-admin/firestore");
+      await db.collection("users").doc(uid).update({
+        mustChangePassword: forceChangeOnLogin === undefined ? true : forceChangeOnLogin,
+        passwordChangedByAdminAt: FieldValue.serverTimestamp(),
+      });
+      firestoreSynced = true;
     } catch {
       // Non-fatal if Firestore Admin SDK lacks IAM; client syncs Firestore flag
     }

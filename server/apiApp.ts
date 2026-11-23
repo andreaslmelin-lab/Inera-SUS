@@ -8,7 +8,7 @@ import {
   handlePasswordReset,
   handleAdminChangePassword,
   handleSyncMetrics,
-} from "./apiHandlers.js";
+} from "../api/_lib/apiHandlers.js";
 
 export function createApiApp(): express.Express {
   const apiApp = express();
