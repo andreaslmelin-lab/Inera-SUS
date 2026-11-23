@@ -13,7 +13,7 @@ import {
   Edit3, Key, Lock, ShieldAlert, Shield, ShieldCheck, UserCheck, UserPlus,
   Copy, Check, Mail, Send, Eye, UserCog, ExternalLink, Sparkles
 } from 'lucide-react';
-import { auth, googleProvider, signInWithPopup, onAuthStateChanged, User, db, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updatePassword, updateProfile } from './firebase';
+import { auth, onAuthStateChanged, User, db, sendPasswordResetEmail, updatePassword, updateProfile } from './firebase';
 import { Product, ProductService, Measurement, MeasurementService, ResponseData, Variant } from './services';
 import { loadProductMappings } from './services/catalogMappingService';
 import { triggerSusMetricsSync } from './services/syncService';
@@ -23,6 +23,8 @@ import { sv } from 'date-fns/locale';
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, onSnapshot, query, where, serverTimestamp, addDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserRole, Invitation } from './types';
+import { ADMIN_EMAILS, isSystemAdmin } from './constants';
+import AuthScreen from './components/AuthScreen';
 import ApiView from './components/ApiView';
 import RawDataView from './components/RawDataView';
 import CatalogMappingView from './components/CatalogMappingView';
@@ -34,351 +36,7 @@ import { CommentsSummaryCard } from './components/CommentsSummaryCard';
 import { synthesizeComments } from './utils/commentSummarizer';
 import ineraLogo from './Images/Inera logo 1.0 färg.svg';
 
-const ADMIN_EMAILS = ['andreas.melin@inera.se', 'andreas.melin@inera', 'andreas.l.melin@gmail.com'];
-
 // --- Components ---
-
-const AuthScreen = ({ initialError = '' }: { initialError?: string }) => {
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [isForgotPassword, setIsForgotPassword] = useState(false);
-  const [email, setEmail] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
-  const [error, setError] = useState(initialError);
-  const [message, setMessage] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const inviteParam = params.get('invite');
-      if (inviteParam) {
-        setInviteCode(inviteParam.trim());
-        setIsRegistering(true);
-      }
-    }
-  }, []);
-
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanEmail = email.trim();
-    const cleanPassword = password;
-    const lowerEmail = cleanEmail.toLowerCase();
-    const cleanName = displayName.trim();
-
-    try {
-      setError('');
-      setMessage('');
-      setIsProcessing(true);
-
-      if (isForgotPassword) {
-        if (!cleanEmail) {
-          setError('Ange din e-postadress för att återställa lösenordet.');
-          setIsProcessing(false);
-          return;
-        }
-        await sendPasswordResetEmail(auth, cleanEmail);
-        setMessage(`En återställningslänk har skickats till ${cleanEmail}. Följ instruktionerna i e-postmeddelandet om du vill välja ett nytt lösenord.`);
-        setIsForgotPassword(false);
-        setPassword('');
-        setConfirmPassword('');
-        setIsProcessing(false);
-        return;
-      }
-
-      if (!cleanEmail || !cleanPassword) {
-        setError('Ange både e-postadress och lösenord.');
-        setIsProcessing(false);
-        return;
-      }
-
-      const isAllowedDomain = lowerEmail.endsWith('@inera.se') || lowerEmail.endsWith('@gmail.com') || ADMIN_EMAILS.includes(lowerEmail);
-
-      if (!isAllowedDomain) {
-        setError('Bara e-postadresser från inera.se eller godkända domäner är tillåtna.');
-        setIsProcessing(false);
-        return;
-      }
-
-      if (isRegistering) {
-        if (!inviteCode.trim()) {
-          setError('Inbjudningskod krävs.');
-          setIsProcessing(false);
-          return;
-        }
-
-        if (cleanPassword.length < 6) {
-          setError('Lösenordet måste vara minst 6 tecken långt.');
-          setIsProcessing(false);
-          return;
-        }
-
-        if (cleanPassword !== confirmPassword) {
-          setError('Lösenorden matchar inte.');
-          setIsProcessing(false);
-          return;
-        }
-
-        const cleanCode = inviteCode.trim();
-        const lowerCode = cleanCode.toLowerCase();
-        let assignedRole: UserRole = 'viewer';
-        let matchedInvitationDoc: any = null;
-
-        // Check fallback general codes
-        if (lowerCode === 'ineraux' || lowerCode === 'ineraux2026') {
-          assignedRole = (ADMIN_EMAILS.includes(lowerEmail)) ? 'admin' : 'viewer';
-        } else {
-          // Check in Firestore invitations collection
-          try {
-            const q = query(collection(db, 'invitations'), where('code', '==', cleanCode));
-            const snap = await getDocs(q);
-            if (snap.empty) {
-              setError('Det var en felaktig inbjudningskod, kontakta ux@inera.se för korrekt kod.');
-              setIsProcessing(false);
-              return;
-            }
-
-            const invDoc = snap.docs[0];
-            const invData = invDoc.data() as Invitation;
-
-            if (invData.status !== 'active') {
-              setError('Denna inbjudningskod har redan använts eller är inte längre aktiv.');
-              setIsProcessing(false);
-              return;
-            }
-
-            if (invData.email && invData.email.trim().toLowerCase() !== lowerEmail) {
-              setError(`Denna inbjudningskod är utfärdad för e-postadressen ${invData.email}. Vänligen registrera med samma e-postadress.`);
-              setIsProcessing(false);
-              return;
-            }
-
-            assignedRole = invData.role || 'viewer';
-            matchedInvitationDoc = invDoc;
-          } catch (invErr: any) {
-            console.error('Kunde inte verifiera inbjudningskod:', invErr);
-            setError('Det var en felaktig inbjudningskod, kontakta ux@inera.se för korrekt kod.');
-            setIsProcessing(false);
-            return;
-          }
-        }
-
-        // Super admin emails are always admin
-        if (lowerEmail === 'andreas.l.melin@gmail.com' || lowerEmail === 'andreas.melin@inera.se') {
-          assignedRole = 'admin';
-        }
-
-        try {
-          const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-          const finalName = cleanName || (matchedInvitationDoc?.data()?.name) || cleanEmail.split('@')[0];
-
-          if (finalName) {
-            await updateProfile(userCredential.user, { displayName: finalName });
-          }
-
-          // Create user document in Firestore
-          await setDoc(doc(db, 'users', userCredential.user.uid), {
-            uid: userCredential.user.uid,
-            email: cleanEmail,
-            displayName: finalName,
-            role: assignedRole,
-            inviteCode: cleanCode,
-            isBlocked: false,
-            createdAt: serverTimestamp(),
-            lastLoggedIn: serverTimestamp()
-          }, { merge: true });
-
-          // Mark invitation as used if applicable
-          if (matchedInvitationDoc) {
-            await updateDoc(doc(db, 'invitations', matchedInvitationDoc.id), {
-              status: 'used',
-              usedAt: new Date().toISOString(),
-              usedBy: userCredential.user.uid
-            });
-          }
-        } catch (regErr: any) {
-          if (regErr.code === 'auth/email-already-in-use') {
-            setError('Ett konto med den här e-postadressen finns redan. Vänligen logga in.');
-            setIsRegistering(false);
-          } else if (regErr.code === 'auth/weak-password') {
-            setError('Lösenordet måste vara minst 6 tecken långt.');
-          } else {
-            setError(regErr.message || 'Ett fel uppstod vid registrering.');
-          }
-        }
-      } else {
-        try {
-          await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-        } catch (signInErr: any) {
-          if (
-            signInErr.code === 'auth/invalid-credential' ||
-            signInErr.code === 'auth/wrong-password' ||
-            signInErr.code === 'auth/user-not-found'
-          ) {
-            setError('Felaktig e-postadress eller lösenord.');
-          } else {
-            setError(signInErr.message || 'Ett fel uppstod vid inloggning.');
-          }
-        }
-      }
-    } catch (err: any) {
-      setError(err.message || 'Ett fel uppstod.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-inera-secondary-95 p-4">
-      <div className="card p-8 shadow-xl max-w-md w-full text-center border-inera-secondary-90 bg-white">
-        <div className="flex justify-center mb-6">
-          <img src={ineraLogo} alt="Inera Logotyp" className="h-12 w-auto" />
-        </div>
-        <h1 className="text-2xl font-bold font-display text-inera-primary-40 mb-1">SUS-analys</h1>
-        <p className="text-sm text-inera-neutral-40 mb-8">
-          {isForgotPassword 
-            ? 'Återställ ditt lösenord' 
-            : isRegistering 
-              ? 'Skapa ett konto med din Inera-adress och inbjudningskod' 
-              : 'Logga in för att hantera och visualisera SUS-mätningar för Ineras tjänster.'}
-        </p>
-
-        {error && (
-          <div className="bg-inera-error-95 text-inera-error-40 border border-inera-error-40 p-4 rounded-lg text-sm text-left mb-6 flex items-start gap-2">
-            <AlertCircle size={18} className="shrink-0 mt-0.5" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {message && (
-          <div className="bg-inera-success-95 text-inera-success-40 border border-inera-success-40 p-4 rounded-lg text-sm text-left mb-6 flex items-start gap-2">
-            <CheckCircle2 size={18} className="shrink-0 mt-0.5" />
-            <span>{message}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleEmailAuth} className="space-y-4 text-left mb-4">
-          {isRegistering && (
-            <div>
-              <label className="block text-sm font-bold text-inera-neutral-20 mb-1">
-                Inbjudningskod <span className="text-inera-error-40">*</span>
-              </label>
-              <input 
-                type="password" 
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                className="input w-full font-mono text-sm"
-                placeholder="Inbjudningskod"
-                required
-              />
-            </div>
-          )}
-
-          {isRegistering && (
-            <div>
-              <label className="block text-sm font-bold text-inera-neutral-20 mb-1">
-                Fullständigt namn / Visningsnamn
-              </label>
-              <input 
-                type="text" 
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                className="input w-full"
-                placeholder="t.ex. Anna Svensson"
-              />
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-bold text-inera-neutral-20 mb-1">E-post <span className="text-inera-error-40">*</span></label>
-            <input 
-              type="email" 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="input w-full"
-              placeholder="namn@inera.se"
-              required
-            />
-          </div>
-
-          {!isForgotPassword && (
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-bold text-inera-neutral-20">
-                  {isRegistering ? 'Välj lösenord' : 'Lösenord'} <span className="text-inera-error-40">*</span>
-                </label>
-                {!isRegistering && (
-                  <button 
-                    type="button"
-                    onClick={() => { setIsForgotPassword(true); setError(''); setMessage(''); }}
-                    className="text-xs text-inera-primary-40 hover:underline font-semibold"
-                  >
-                    Glömt lösenordet?
-                  </button>
-                )}
-              </div>
-              <input 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="input w-full"
-                placeholder="Minst 6 tecken"
-                required
-              />
-            </div>
-          )}
-
-          {isRegistering && (
-            <div>
-              <label className="block text-sm font-bold text-inera-neutral-20 mb-1">
-                Bekräfta lösenord <span className="text-inera-error-40">*</span>
-              </label>
-              <input 
-                type="password" 
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="input w-full"
-                placeholder="Upprepa valt lösenord"
-                required
-              />
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isProcessing || (isRegistering && !inviteCode.trim())}
-            className="w-full btn btn--l btn--primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isProcessing && <Loader2 size={18} className="animate-spin" />}
-            <span>
-              {isForgotPassword ? 'Återställ lösenord' : (isRegistering ? 'Registrera' : 'Logga in')}
-            </span>
-          </button>
-        </form>
-
-        {isForgotPassword ? (
-          <button 
-            onClick={() => { setIsForgotPassword(false); setError(''); setMessage(''); }}
-            type="button"
-            className="text-sm text-inera-primary-40 hover:underline font-bold mt-4"
-          >
-            Tillbaka till inloggning
-          </button>
-        ) : (
-          <button 
-            onClick={() => { setIsRegistering(!isRegistering); setError(''); setMessage(''); }}
-            type="button"
-            className="text-sm text-inera-primary-40 hover:underline font-bold mt-4 block mx-auto"
-          >
-            {isRegistering ? 'Har du redan ett konto? Logga in.' : 'Inget konto? Skapa ett här.'}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
 
 const UserProfileModal = ({
   user,
@@ -1925,7 +1583,7 @@ export default function App() {
   const [currentUserDoc, setCurrentUserDoc] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'upload' | 'admin' | 'api' | 'rawdata' | 'sus_admin'>('dashboard');
-  const [adminSubTab, setAdminSubTab] = useState<'users' | 'upload' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur'>('users');
+  const [adminSubTab, setAdminSubTab] = useState<'users' | 'upload' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur' | 'smtp'>('users');
   const [authError, setAuthError] = useState<string>('');
   const [view, setView] = useState<'company' | 'product'>('company');
   const [products, setProducts] = useState<Product[]>([]);
@@ -2459,29 +2117,37 @@ export default function App() {
       if (user) {
         const userRef = doc(db, 'users', user.uid);
         const userSnap = await getDoc(userRef);
-        
+        const adminUser = isSystemAdmin(user.email);
+
         let shouldBlock = false;
         if (userSnap.exists()) {
           const userData = userSnap.data();
-          if (userData.isBlocked && user.email?.toLowerCase() !== 'andreas.melin@inera.se') {
+          if (userData.isBlocked && !adminUser) {
             shouldBlock = true;
           }
         }
-        
+
         if (shouldBlock) {
           await auth.signOut();
           setUser(null);
           setAuthError('Ditt konto har blivit blockerat. Kontakta administratör.');
         } else {
+          const existingRole = userSnap.exists() ? userSnap.data().role : undefined;
+          const resolvedRole: UserRole = adminUser
+            ? 'admin'
+            : (existingRole === 'admin' || existingRole === 'editor' || existingRole === 'viewer')
+              ? existingRole
+              : 'viewer';
+
           await setDoc(userRef, {
             uid: user.uid,
             email: user.email,
-            displayName: user.displayName || user.email?.split('@')[0] || 'User',
-            role: userSnap.exists() ? userSnap.data().role : 'user',
+            displayName: (userSnap.exists() && userSnap.data().displayName) || user.displayName || user.email?.split('@')[0] || 'User',
+            role: resolvedRole,
             lastLoggedIn: serverTimestamp(),
             isBlocked: false
           }, { merge: true });
-          
+
           setUser(user);
           setAuthError('');
         }
@@ -3008,7 +2674,7 @@ export default function App() {
                 active={activeTab === 'sus_admin'} 
                 onClick={() => setActiveTab('sus_admin')} 
               />
-              {user.email && ADMIN_EMAILS.includes(user.email) && (
+              {(isSystemAdmin(user?.email) || currentUserDoc?.role === 'admin') && (
                 <HeaderNavItem 
                   icon={Settings} 
                   label="Administration" 
@@ -3141,7 +2807,7 @@ export default function App() {
                   </button>
 
                   {/* Administration */}
-                  {user.email && ADMIN_EMAILS.includes(user.email) && (
+                  {(isSystemAdmin(user?.email) || currentUserDoc?.role === 'admin') && (
                     <div className="space-y-1">
                       <button
                         onClick={() => {
@@ -3208,6 +2874,12 @@ export default function App() {
                             className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'grundstruktur' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
                           >
                             Inläsning Inera Grundstruktur
+                          </button>
+                          <button 
+                            onClick={() => { setActiveTab('admin'); setAdminSubTab('smtp'); setIsMobileMenuOpen(false); }}
+                            className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", activeTab === 'admin' && adminSubTab === 'smtp' ? "text-[#a63363] bg-pink-50" : "text-neutral-700 hover:text-[#a63363] hover:bg-pink-50")}
+                          >
+                            E-post och SMTP
                           </button>
                         </div>
                       )}
@@ -3968,7 +3640,7 @@ export default function App() {
                 </div>
               )}
               </motion.div>
-            ) : activeTab === 'admin' && user?.email && ADMIN_EMAILS.includes(user.email) ? (
+            ) : activeTab === 'admin' && (isSystemAdmin(user?.email) || currentUserDoc?.role === 'admin') ? (
               <motion.div
                 key="admin"
                 initial={{ opacity: 0, y: 15 }}

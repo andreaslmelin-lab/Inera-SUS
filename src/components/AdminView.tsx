@@ -6,17 +6,21 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   AlertCircle, CheckCircle2, Loader2, Users, ExternalLink, Check, 
   Trash2, Edit3, Key, User as LucideUser, Lock, UserPlus, Copy, RefreshCw, X, UserCog,
-  Upload, Send, FileSpreadsheet, Database, Layers
+  Upload, Send, FileSpreadsheet, Database, Layers, Mail
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { auth, db, sendPasswordResetEmail } from '../firebase';
+import { auth, db } from '../firebase';
 import { cn } from '../lib/utils';
 import { UserRole, Invitation } from '../types';
 import { ADMIN_EMAILS } from '../constants';
+import { requestPasswordResetViaApp, sendInvitationEmailViaSmtp } from '../services/emailClientService';
 import ApiView from './ApiView';
 import RawDataView from './RawDataView';
 import CatalogMappingView from './CatalogMappingView';
 import GrundstrukturView from './GrundstrukturView';
+import SmtpSettingsView from './SmtpSettingsView';
+
+type AdminTabId = 'users' | 'upload' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur' | 'smtp';
 
 const AdminView = ({ 
   activeAdminTab = 'users',
@@ -24,8 +28,8 @@ const AdminView = ({
   uploadNode,
   onResetCatalog
 }: { 
-  activeAdminTab?: 'users' | 'upload' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur';
-  onTabChange?: (tab: 'users' | 'upload' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur') => void;
+  activeAdminTab?: AdminTabId;
+  onTabChange?: (tab: AdminTabId) => void;
   uploadNode?: React.ReactNode;
   onResetCatalog?: () => void;
 }) => {
@@ -35,7 +39,7 @@ const AdminView = ({
     setCurrentTab(activeAdminTab);
   }, [activeAdminTab]);
 
-  const handleTabSelect = (tab: 'users' | 'upload' | 'api' | 'rawdata' | 'catalog' | 'grundstruktur') => {
+  const handleTabSelect = (tab: AdminTabId) => {
     setCurrentTab(tab);
     if (onTabChange) {
       onTabChange(tab);
@@ -49,6 +53,7 @@ const AdminView = ({
     { id: 'rawdata', label: 'Rådata Export', icon: FileSpreadsheet, desc: 'Export & inspektion' },
     { id: 'catalog', label: 'Produktkatalog & Merge', icon: Database, desc: 'Grundkatalog & mappning' },
     { id: 'grundstruktur', label: 'Inera Grundstruktur', icon: Layers, desc: 'Tåg, team & produkter' },
+    { id: 'smtp', label: 'E-post och SMTP', icon: Mail, desc: 'Gmail SMTP & testutskick' },
   ];
 
   const [usersSubView, setUsersSubView] = useState<'all' | 'users' | 'invitations'>('all');
@@ -88,6 +93,8 @@ const AdminView = ({
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<UserRole>('viewer');
   const [inviteCode, setInviteCode] = useState('');
+  const [sendInviteEmailNow, setSendInviteEmailNow] = useState(false);
+  const [sendingInviteId, setSendingInviteId] = useState<string | null>(null);
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
 
@@ -105,6 +112,7 @@ const AdminView = ({
     setInviteEmail('');
     setInviteRole('viewer');
     setInviteCode(generateRandomCode());
+    setSendInviteEmailNow(false);
     setIsInviteModalOpen(true);
   };
 
@@ -249,24 +257,69 @@ const AdminView = ({
         return;
       }
 
+      const targetEmail = inviteEmail.trim().toLowerCase();
+
       await addDoc(collection(db, 'invitations'), {
         code: cleanCode,
         name: inviteName.trim() || undefined,
-        email: inviteEmail.trim().toLowerCase() || undefined,
+        email: targetEmail || undefined,
         role: inviteRole,
         status: 'active',
         createdAt: new Date().toISOString(),
         createdBy: auth.currentUser?.email || 'admin'
       });
 
-      setSuccessMsg(`Inbjudan skapad med koden ${cleanCode}!`);
-      setTimeout(() => setSuccessMsg(''), 5000);
+      if (sendInviteEmailNow && targetEmail) {
+        const regLink = typeof window !== 'undefined' ? `${window.location.origin}?invite=${encodeURIComponent(cleanCode)}` : `?invite=${cleanCode}`;
+        const mailRes = await sendInvitationEmailViaSmtp({
+          to: targetEmail,
+          recipientName: inviteName.trim() || undefined,
+          inviteCode: cleanCode,
+          role: inviteRole,
+          registrationUrl: regLink,
+        });
+        if (mailRes.success) {
+          setSuccessMsg(`Inbjudan skapad (${cleanCode}) och skickad via SMTP till ${targetEmail}!`);
+        } else {
+          setSuccessMsg(`Inbjudan skapad (${cleanCode}), men e-postutskick misslyckades: ${mailRes.error || 'Kontrollera SMTP-inställningarna'}`);
+        }
+      } else {
+        setSuccessMsg(`Inbjudan skapad med koden ${cleanCode}!`);
+      }
+
+      setTimeout(() => setSuccessMsg(''), 6000);
       setIsInviteModalOpen(false);
       await fetchUsersAndInvitations();
     } catch (err: any) {
       setError(err.message || 'Kunde inte skapa inbjudan');
     } finally {
       setIsCreatingInvite(false);
+    }
+  };
+
+  const handleSendInviteByEmail = async (inv: Invitation) => {
+    if (!inv.email) return;
+    setSendingInviteId(inv.id);
+    setError('');
+    try {
+      const regLink = typeof window !== 'undefined' ? `${window.location.origin}?invite=${encodeURIComponent(inv.code)}` : `?invite=${inv.code}`;
+      const res = await sendInvitationEmailViaSmtp({
+        to: inv.email,
+        recipientName: inv.name || undefined,
+        inviteCode: inv.code,
+        role: inv.role,
+        registrationUrl: regLink,
+      });
+      if (!res.success) {
+        setError(res.error || 'Kunde inte skicka inbjudan via SMTP.');
+      } else {
+        setSuccessMsg(`Inbjudan skickades via e-post till ${inv.email}!`);
+        setTimeout(() => setSuccessMsg(''), 5000);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Kunde inte skicka inbjudan via e-post.');
+    } finally {
+      setSendingInviteId(null);
     }
   };
 
@@ -381,8 +434,12 @@ const AdminView = ({
     setPwdError('');
     setPwdSuccess('');
     try {
-      await sendPasswordResetEmail(auth, targetEmail);
-      setPwdSuccess(`En länk för lösenordsåterställning har skickats till ${targetEmail}!`);
+      const res = await requestPasswordResetViaApp(targetEmail);
+      setPwdSuccess(
+        res.method === 'smtp'
+          ? `En återställningslänk har skickats via Gmail SMTP till ${targetEmail}!`
+          : `En länk för lösenordsåterställning har skickats till ${targetEmail}!`
+      );
     } catch (err: any) {
       setPwdError(err.message || 'Kunde inte skicka återställningslänk');
     }
@@ -394,7 +451,7 @@ const AdminView = ({
     <div className="space-y-6">
       {/* Admin Sub-navigation Tab Bar */}
       <div className="bg-white border border-inera-secondary-90 rounded-2xl p-2 shadow-xs mb-6">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
           {adminTabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = currentTab === tab.id;
@@ -793,6 +850,18 @@ const AdminView = ({
                               </td>
                               <td className="py-3 px-2 text-right">
                                 <div className="flex items-center justify-end gap-1.5">
+                                  {inv.email && inv.status === 'active' && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendInviteByEmail(inv)}
+                                      disabled={sendingInviteId === inv.id}
+                                      className="btn btn--xs btn--primary flex items-center gap-1"
+                                      title="Skicka inbjudan via e-post (SMTP)"
+                                    >
+                                      {sendingInviteId === inv.id ? <Loader2 size={12} className="animate-spin" /> : <Mail size={12} />}
+                                      <span>Mejla</span>
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     onClick={() => copyToClipboard(regLink, `link-${inv.id}`)}
@@ -952,6 +1021,18 @@ const AdminView = ({
                         required
                       />
                     </div>
+
+                    {inviteEmail.trim() && (
+                      <label className="flex items-center gap-2 text-xs font-semibold text-inera-neutral-20 cursor-pointer pt-1">
+                        <input
+                          type="checkbox"
+                          checked={sendInviteEmailNow}
+                          onChange={(e) => setSendInviteEmailNow(e.target.checked)}
+                          className="rounded border-inera-secondary-80 text-inera-primary-40 focus:ring-inera-primary-40"
+                        />
+                        <span>Skicka inbjudan direkt via e-post (SMTP)</span>
+                      </label>
+                    )}
 
                     <div className="flex justify-end gap-3 pt-3 border-t border-inera-secondary-90">
                       <button 
@@ -1409,6 +1490,18 @@ const AdminView = ({
             transition={{ duration: 0.2 }}
           >
             <GrundstrukturView />
+          </motion.div>
+        )}
+
+        {currentTab === 'smtp' && (
+          <motion.div
+            key="smtp"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            <SmtpSettingsView />
           </motion.div>
         )}
       </AnimatePresence>
