@@ -32,10 +32,12 @@ export async function requestPasswordResetViaApp(
     }
 
     if (!res.ok) {
-      throw new Error(data?.error || 'Kunde inte begära lösenordsåterställning.');
-    }
-
-    if (!data) {
+      // Only abort for explicit validation (400) or rate limit (429) responses from our JSON API
+      if ((res.status === 400 || res.status === 429) && data?.error) {
+        throw new Error(data.error);
+      }
+      fallbackReason = data?.error ? 'api_error' : `api_http_${res.status}`;
+    } else if (!data) {
       fallbackReason = 'api_unavailable';
     } else if (data.handledBy === 'smtp' && data.success) {
       return { method: 'smtp' };
@@ -48,9 +50,7 @@ export async function requestPasswordResetViaApp(
   } catch (err: any) {
     if (
       err?.message &&
-      (err.message.includes('För många') ||
-        err.message.includes('giltig e-postadress') ||
-        err.message.includes('Kunde inte begära'))
+      (err.message.includes('För många') || err.message.includes('giltig e-postadress'))
     ) {
       throw err;
     }
@@ -89,7 +89,8 @@ export async function sendInvitationEmailViaSmtp(params: {
   } catch {
     return {
       success: false,
-      error: 'Kunde inte läsa JSON-svar från e-postservern (/api/admin/email/send-invitation). Kontrollera att serverfunktionerna körs.',
+      error:
+        'Kunde inte läsa JSON-svar från e-postservern (/api/admin/email/send-invitation). Kontrollera att serverfunktionerna körs.',
     };
   }
 

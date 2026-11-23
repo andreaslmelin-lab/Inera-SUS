@@ -453,9 +453,9 @@ const AdminView = ({
         setPwdSuccess(
           `Skickad via Firebase Auth (ej Gmail SMTP eftersom servern saknar Firebase Admin IAM-behörighet för att skapa återställningslänk). Kontrollera även skräpposten hos ${targetEmail}.`
         );
-      } else if (res.fallbackReason === 'api_unavailable') {
+      } else if (res.fallbackReason === 'api_unavailable' || res.fallbackReason?.startsWith('api_http_')) {
         setPwdSuccess(
-          `Skickad via Firebase Auth (backend-API:t för SMTP kunde inte nås). Kontrollera även skräpposten hos ${targetEmail}.`
+          `Skickad via Firebase Auth (backend-API:t för SMTP svarade inte som förväntat). Kontrollera även skräpposten hos ${targetEmail}.`
         );
       } else {
         setPwdSuccess(`En länk för lösenordsåterställning har skickats till ${targetEmail}!`);

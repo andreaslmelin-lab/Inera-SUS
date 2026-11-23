@@ -103,7 +103,10 @@ const SmtpSettingsView: React.FC = () => {
       try {
         data = JSON.parse(rawText);
       } catch {
-        throw new Error('Kunde inte läsa JSON-svar från /api/admin/smtp/status. Kontrollera att backend-API:t körs korrekt.');
+        const contentType = res.headers.get('content-type') || 'okänd';
+        throw new Error(
+          `Kunde inte läsa JSON-svar från /api/admin/smtp/status (HTTP ${res.status}, ${contentType}). Kontrollera att backend-API:t körs korrekt och har deployats.`
+        );
       }
       if (!res.ok) {
         throw new Error(data?.error || 'Kunde inte hämta SMTP-konfiguration.');
@@ -193,7 +196,10 @@ const SmtpSettingsView: React.FC = () => {
       try {
         data = JSON.parse(rawText);
       } catch {
-        throw new Error('Kunde inte läsa JSON-svar från /api/admin/smtp/test. Kontrollera att backend-API:t körs korrekt.');
+        const contentType = res.headers.get('content-type') || 'okänd';
+        throw new Error(
+          `Kunde inte läsa JSON-svar från /api/admin/smtp/test (HTTP ${res.status}, ${contentType}). Kontrollera att backend-API:t körs korrekt och har deployats.`
+        );
       }
       if (!res.ok) {
         throw new Error(data?.error || 'Kunde inte genomföra SMTP-testet.');
